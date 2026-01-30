@@ -50,7 +50,9 @@ public class SecurityConfig {
                 
                 // Endpoints de desarrollo
                 .requestMatchers("/actuator/**").hasRole("ADMIN")
-                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").hasRole("ADMIN")
+                    // Swagger / OpenAPI (permitir en desarrollo)
+                    .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+
                 
                 // Cualquier otra petición requiere autenticación
                 .anyRequest().authenticated()
@@ -76,7 +78,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
         
