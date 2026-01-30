@@ -1,14 +1,20 @@
 package com.david.trenes.service;
 
+import com.david.trenes.dto.TrenPosicionResponse;
+import com.david.trenes.model.Ruta;
 import com.david.trenes.model.Tren;
 import com.david.trenes.model.Via;
+import com.david.trenes.repository.RutaRepository;
 import com.david.trenes.repository.TrenRepository;
+import com.david.trenes.repository.ViaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +25,8 @@ import java.util.Optional;
 public class TrenService {
     
     private final TrenRepository trenRepository;
+    private final RutaRepository rutaRepository;
+    private final ViaRepository viaRepository;
     
     public List<Tren> findAll() {
         log.debug("Buscando todos los trenes");
@@ -277,5 +285,212 @@ public class TrenService {
                 return trenRepository.save(tren);
             })
             .orElseThrow(() -> new RuntimeException("Tren no encontrado con ID: " + id));
+    }
+
+    public Tren iniciarViaje(String trenId, String rutaId, Double velocidadCruceroKmh) {
+        if (velocidadCruceroKmh == null || velocidadCruceroKmh <= 0) {
+            throw new IllegalArgumentException("La velocidadCruceroKmh debe ser > 0");
+        }
+
+        Tren tren = trenRepository.findById(trenId)
+                .orElseThrow(() -> new RuntimeException("Tren no encontrado con ID: " + trenId));
+
+        Ruta ruta = rutaRepository.findById(rutaId)
+                .orElseThrow(() -> new RuntimeException("Ruta no encontrada con ID: " + rutaId));
+
+        if (ruta.getActivo() == null || !ruta.getActivo()) {
+            throw new IllegalStateException("La ruta no está activa");
+        }
+        if (ruta.getVias() == null || ruta.getVias().isEmpty()) {
+            throw new IllegalStateException("La ruta no tiene vías asociadas");
+        }
+
+        if (tren.getVelocidadMaxima() != null) {
+            velocidadCruceroKmh = Math.min(velocidadCruceroKmh, tren.getVelocidadMaxima().doubleValue());
+        }
+
+        tren.setRutaActualId(rutaId);
+        tren.setEstadoActual(Tren.EstadoTren.EN_MARCHA);
+        tren.setFechaInicioViaje(LocalDateTime.now());
+        tren.setVelocidadCruceroKmh(velocidadCruceroKmh);
+
+        // Estación actual = estación origen al arrancar
+        tren.setEstacionActualId(ruta.getEstacionOrigenId());
+
+        tren.setFechaActualizacion(LocalDateTime.now());
+
+        tren.setViaActualId(null);
+        tren.setKilometroActual(null);
+        tren.setUbicacionActual(null);
+
+        return trenRepository.save(tren);
+    }
+
+    @Transactional
+    public TrenPosicionResponse getPosicionActual(String trenId) {
+        Tren tren = trenRepository.findById(trenId)
+                .orElseThrow(() -> new RuntimeException("Tren no encontrado con ID: " + trenId));
+
+        // Si ya finalizó, devolvemos lo persistido (NO depende del reloj)
+        if (tren.getEstadoActual() == Tren.EstadoTren.FINALIZADO) {
+            Via.Coordenada u = tren.getUbicacionActual();
+
+            Double lat = (u != null) ? u.getLatitud() : null;
+            Double lon = (u != null) ? u.getLongitud() : null;
+            Double alt = (u != null) ? u.getAltitud() : null;
+
+            return TrenPosicionResponse.builder()
+                    .trenId(tren.getId())
+                    .rutaId(tren.getRutaActualId())
+                    .viaId(tren.getViaActualId())
+                    .estacionActualId(tren.getEstacionActualId())
+                    // como al finalizar estacionActualId == destino, sirve como destino también
+                    .estacionDestinoId(tren.getEstacionActualId())
+                    .kilometroEnVia(tren.getKilometroActual())
+                    .latitud(lat != null ? lat : 0.0)
+                    .longitud(lon != null ? lon : 0.0)
+                    .altitud(alt != null ? alt : 0.0)
+                    .velocidadKmh(0.0)
+                    .segundosDesdeInicio(0L)
+                    .distanciaTotalRecorridaKm(0.0)
+                    .build();
+        }
+
+        if (tren.getRutaActualId() == null) {
+            throw new IllegalStateException("El tren no tiene ruta asignada");
+        }
+        if (tren.getFechaInicioViaje() == null || tren.getVelocidadCruceroKmh() == null) {
+            throw new IllegalStateException("El tren no tiene viaje iniciado (fechaInicioViaje/velocidadCruceroKmh)");
+        }
+
+        Ruta ruta = rutaRepository.findById(tren.getRutaActualId())
+                .orElseThrow(() -> new RuntimeException("Ruta no encontrada con ID: " + tren.getRutaActualId()));
+
+        List<Ruta.ViaRuta> viasRuta = ruta.getVias().stream()
+                .sorted(Comparator.comparing(Ruta.ViaRuta::getOrden, Comparator.nullsLast(Integer::compareTo)))
+                .toList();
+
+        long segundos = Math.max(0, Duration.between(tren.getFechaInicioViaje(), LocalDateTime.now()).getSeconds());
+        double horas = segundos / 3600.0;
+        double distanciaRecorridaKm = tren.getVelocidadCruceroKmh() * horas;
+
+        double longitudTotalRutaKm = 0.0;
+        for (Ruta.ViaRuta vr : viasRuta) {
+            Via viaTmp = viaRepository.findById(vr.getViaId())
+                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + vr.getViaId()));
+            if (viaTmp.getLongitudKm() != null && viaTmp.getLongitudKm() > 0) {
+                longitudTotalRutaKm += viaTmp.getLongitudKm();
+            }
+        }
+
+        boolean haFinalizado = longitudTotalRutaKm > 0 && distanciaRecorridaKm >= longitudTotalRutaKm;
+
+        double acumulado = 0.0;
+        Ruta.ViaRuta viaRutaActual = null;
+        double kmEnVia = 0.0;
+
+        for (Ruta.ViaRuta vr : viasRuta) {
+            Via viaTmp = viaRepository.findById(vr.getViaId())
+                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + vr.getViaId()));
+
+            double longitudKmTmp = viaTmp.getLongitudKm() != null ? viaTmp.getLongitudKm() : 0.0;
+            if (longitudKmTmp <= 0) continue;
+
+            if (distanciaRecorridaKm <= acumulado + longitudKmTmp) {
+                viaRutaActual = vr;
+                kmEnVia = distanciaRecorridaKm - acumulado;
+                break;
+            }
+            acumulado += longitudKmTmp;
+        }
+
+        if (viaRutaActual == null) {
+            Ruta.ViaRuta ultima = viasRuta.get(viasRuta.size() - 1);
+            final String ultimaViaId = ultima.getViaId();
+
+            Via ultimaVia = viaRepository.findById(ultimaViaId)
+                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + ultimaViaId));
+
+            double longitudKmTmp = ultimaVia.getLongitudKm() != null ? ultimaVia.getLongitudKm() : 0.0;
+            viaRutaActual = ultima;
+            kmEnVia = Math.max(0.0, longitudKmTmp);
+        }
+
+        final String viaIdActual = viaRutaActual.getViaId();
+
+        Via via = viaRepository.findById(viaIdActual)
+                .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + viaIdActual));
+
+        Via.Coordenada inicio = via.getCoordenadaInicio();
+        Via.Coordenada fin = via.getCoordenadaFin();
+
+        double longitudKm = via.getLongitudKm() != null ? via.getLongitudKm() : 0.0;
+        double t = (longitudKm > 0) ? Math.min(1.0, Math.max(0.0, kmEnVia / longitudKm)) : 0.0;
+
+        double lat = lerp(inicio != null ? inicio.getLatitud() : null, fin != null ? fin.getLatitud() : null, t);
+        double lon = lerp(inicio != null ? inicio.getLongitud() : null, fin != null ? fin.getLongitud() : null, t);
+        double alt = lerp(inicio != null ? inicio.getAltitud() : null, fin != null ? fin.getAltitud() : null, t);
+
+        if (haFinalizado) {
+            log.info("Tren {} ha llegado al final de la ruta {} -> FINALIZADO", trenId, tren.getRutaActualId());
+
+            tren.setEstadoActual(Tren.EstadoTren.FINALIZADO);
+            tren.setEstacionActualId(ruta.getEstacionDestinoId());
+
+            tren.setViaActualId(via.getId());
+            tren.setKilometroActual(longitudKm);
+
+            Via.Coordenada finReal = (fin != null)
+                    ? fin
+                    : Via.Coordenada.builder().latitud(lat).longitud(lon).altitud(alt).build();
+
+            tren.setUbicacionActual(finReal);
+            tren.setFechaActualizacion(LocalDateTime.now());
+
+            trenRepository.save(tren);
+
+            // devolver clavado al final
+            kmEnVia = longitudKm;
+            lat = finReal.getLatitud() != null ? finReal.getLatitud() : lat;
+            lon = finReal.getLongitud() != null ? finReal.getLongitud() : lon;
+            alt = finReal.getAltitud() != null ? finReal.getAltitud() : alt;
+
+            return TrenPosicionResponse.builder()
+                    .trenId(tren.getId())
+                    .rutaId(tren.getRutaActualId())
+                    .viaId(via.getId())
+                    .estacionActualId(tren.getEstacionActualId())
+                    .estacionDestinoId(ruta.getEstacionDestinoId())
+                    .kilometroEnVia(kmEnVia)
+                    .latitud(lat)
+                    .longitud(lon)
+                    .altitud(alt)
+                    .velocidadKmh(0.0)
+                    .segundosDesdeInicio(segundos)
+                    .distanciaTotalRecorridaKm(distanciaRecorridaKm)
+                    .build();
+        }
+
+        return TrenPosicionResponse.builder()
+                .trenId(tren.getId())
+                .rutaId(tren.getRutaActualId())
+                .viaId(via.getId())
+                .estacionActualId(tren.getEstacionActualId())
+                .estacionDestinoId(ruta.getEstacionDestinoId())
+                .kilometroEnVia(kmEnVia)
+                .latitud(lat)
+                .longitud(lon)
+                .altitud(alt)
+                .velocidadKmh(tren.getVelocidadCruceroKmh())
+                .segundosDesdeInicio(segundos)
+                .distanciaTotalRecorridaKm(distanciaRecorridaKm)
+                .build();
+    }
+
+    private double lerp(Double a, Double b, double t) {
+        if (a == null && b == null) return 0.0;
+        if (a == null) return b;
+        if (b == null) return a;
+        return a + (b - a) * t;
     }
 }

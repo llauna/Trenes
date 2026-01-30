@@ -1,5 +1,6 @@
 package com.david.trenes.controller;
 
+import com.david.trenes.dto.TrenPosicionResponse;
 import com.david.trenes.model.Tren;
 import com.david.trenes.model.Via;
 import com.david.trenes.service.TrenService;
@@ -190,6 +191,16 @@ public class TrenController {
         Tren nuevoTren = trenService.save(tren);
         return ResponseEntity.status(HttpStatus.CREATED).body(nuevoTren);
     }
+
+    @PostMapping("/{id}/iniciar-viaje")
+    public ResponseEntity<Tren> iniciarViaje(
+            @PathVariable String id,
+            @RequestParam String rutaId,
+            @RequestParam Double velocidadCruceroKmh) {
+        log.info("Iniciando viaje para tren {} en ruta {} a {} km/h", id, rutaId, velocidadCruceroKmh);
+        Tren actualizado = trenService.iniciarViaje(id, rutaId, velocidadCruceroKmh);
+        return ResponseEntity.ok(actualizado);
+    }
     
     @PutMapping("/{id}")
     public ResponseEntity<Tren> update(@PathVariable String id, @Valid @RequestBody Tren tren) {
@@ -358,4 +369,11 @@ public class TrenController {
         boolean exists = trenService.existsByMatricula(matricula);
         return ResponseEntity.ok(exists);
     }
+
+    @GetMapping("/{id}/posicion")
+    public ResponseEntity<TrenPosicionResponse> getPosicionActual(@PathVariable String id) {
+        TrenPosicionResponse posicion = trenService.getPosicionActual(id);
+        return ResponseEntity.ok(posicion);
+    }
+
 }
