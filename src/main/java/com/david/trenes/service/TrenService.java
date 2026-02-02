@@ -9,6 +9,7 @@ import com.david.trenes.repository.TrenRepository;
 import com.david.trenes.repository.ViaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +17,9 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +30,9 @@ public class TrenService {
     private final TrenRepository trenRepository;
     private final RutaRepository rutaRepository;
     private final ViaRepository viaRepository;
+    
+    @Value("${app.simulation.time-acceleration-factor:60}")
+    private Double timeAccelerationFactor;
     
     public List<Tren> findAll() {
         log.debug("Buscando todos los trenes");
@@ -370,15 +376,26 @@ public class TrenService {
                 .sorted(Comparator.comparing(Ruta.ViaRuta::getOrden, Comparator.nullsLast(Integer::compareTo)))
                 .toList();
 
+        // Cargar todas las vías de una vez para optimizar rendimiento
+        List<String> viaIds = viasRuta.stream()
+                .map(Ruta.ViaRuta::getViaId)
+                .toList();
+        List<Via> vias = viaRepository.findAllById(viaIds);
+        Map<String, Via> viaMap = vias.stream()
+                .collect(Collectors.toMap(Via::getId, via -> via));
+
         long segundos = Math.max(0, Duration.between(tren.getFechaInicioViaje(), LocalDateTime.now()).getSeconds());
-        double horas = segundos / 3600.0;
+        long segundosAcelerados = (long) (segundos * timeAccelerationFactor);
+        double horas = segundosAcelerados / 3600.0;
         double distanciaRecorridaKm = tren.getVelocidadCruceroKmh() * horas;
+        
+        log.debug("Tiempo real: {}s, Tiempo acelerado (factor {}): {}s, Distancia recorrida: {} km", 
+                 segundos, timeAccelerationFactor, segundosAcelerados, distanciaRecorridaKm);
 
         double longitudTotalRutaKm = 0.0;
         for (Ruta.ViaRuta vr : viasRuta) {
-            Via viaTmp = viaRepository.findById(vr.getViaId())
-                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + vr.getViaId()));
-            if (viaTmp.getLongitudKm() != null && viaTmp.getLongitudKm() > 0) {
+            Via viaTmp = viaMap.get(vr.getViaId());
+            if (viaTmp != null && viaTmp.getLongitudKm() != null && viaTmp.getLongitudKm() > 0) {
                 longitudTotalRutaKm += viaTmp.getLongitudKm();
             }
         }
@@ -390,8 +407,8 @@ public class TrenService {
         double kmEnVia = 0.0;
 
         for (Ruta.ViaRuta vr : viasRuta) {
-            Via viaTmp = viaRepository.findById(vr.getViaId())
-                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + vr.getViaId()));
+            Via viaTmp = viaMap.get(vr.getViaId());
+            if (viaTmp == null) continue;
 
             double longitudKmTmp = viaTmp.getLongitudKm() != null ? viaTmp.getLongitudKm() : 0.0;
             if (longitudKmTmp <= 0) continue;
@@ -408,8 +425,10 @@ public class TrenService {
             Ruta.ViaRuta ultima = viasRuta.get(viasRuta.size() - 1);
             final String ultimaViaId = ultima.getViaId();
 
-            Via ultimaVia = viaRepository.findById(ultimaViaId)
-                    .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + ultimaViaId));
+            Via ultimaVia = viaMap.get(ultimaViaId);
+            if (ultimaVia == null) {
+                throw new RuntimeException("Vía no encontrada con ID: " + ultimaViaId);
+            }
 
             double longitudKmTmp = ultimaVia.getLongitudKm() != null ? ultimaVia.getLongitudKm() : 0.0;
             viaRutaActual = ultima;
@@ -418,8 +437,10 @@ public class TrenService {
 
         final String viaIdActual = viaRutaActual.getViaId();
 
-        Via via = viaRepository.findById(viaIdActual)
-                .orElseThrow(() -> new RuntimeException("Vía no encontrada con ID: " + viaIdActual));
+        Via via = viaMap.get(viaIdActual);
+        if (via == null) {
+            throw new RuntimeException("Vía no encontrada con ID: " + viaIdActual);
+        }
 
         Via.Coordenada inicio = via.getCoordenadaInicio();
         Via.Coordenada fin = via.getCoordenadaFin();

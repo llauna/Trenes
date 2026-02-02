@@ -30,32 +30,33 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // Endpoints públicos (sin autenticación)
-                .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers("/api/v1/estaciones/**").permitAll()
-                .requestMatchers("/api/v1/rutas/**").permitAll()
-                .requestMatchers("/api/v1/horarios/**").permitAll()
-                .requestMatchers("/api/v1/vias/**").permitAll()
-                .requestMatchers("/api/v1/trenes/**").permitAll()
-                
-                // Endpoints de gestión (requieren autenticación)
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/v1/mantenimiento/**").hasAnyRole("ADMIN", "MAINTENANCE")
-                .requestMatchers("/api/v1/incidentes/**").hasAnyRole("ADMIN", "OPERATOR")
-                .requestMatchers("/api/v1/señales/**").hasAnyRole("ADMIN", "OPERATOR")
-                
-                // Endpoints de monitoreo (requieren autenticación)
-                .requestMatchers("/api/v1/monitoring/**").hasAnyRole("ADMIN", "OPERATOR", "MONITOR")
-                .requestMatchers("/api/v1/reports/**").hasAnyRole("ADMIN", "MANAGER")
-                
-                // Endpoints de desarrollo
-                .requestMatchers("/actuator/**").hasRole("ADMIN")
-                    // Swagger / OpenAPI (permitir en desarrollo)
+                    // Endpoints públicos (sin autenticación)
+                    .requestMatchers("/api/v1/auth/**").permitAll()
+                    .requestMatchers("/api/v1/estaciones/**").permitAll()
+                    .requestMatchers("/api/v1/rutas/**").permitAll()
+                    .requestMatchers("/api/v1/horarios/**").permitAll()
+                    .requestMatchers("/api/v1/vias/**").permitAll()
+                    .requestMatchers("/api/v1/trenes/**").permitAll()
+
+                    // Endpoints de cliente (requieren autenticación)
+                    .requestMatchers("/api/v1/billetes/**").authenticated()
+                    .requestMatchers("/api/v1/pasajeros/**").authenticated()
+
+                    // Endpoints de gestión (requieren autenticación)
+                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                    .requestMatchers("/api/v1/mantenimiento/**").hasAnyRole("ADMIN", "MAINTENANCE")
+                    .requestMatchers("/api/v1/incidentes/**").hasAnyRole("ADMIN", "OPERATOR")
+                    .requestMatchers("/api/v1/señales/**").hasAnyRole("ADMIN", "OPERATOR")
+
+                    // Endpoints de monitoreo (requieren autenticación)
+                    .requestMatchers("/api/v1/monitoring/**").hasAnyRole("ADMIN", "OPERATOR", "MONITOR")
+                    .requestMatchers("/api/v1/reports/**").hasAnyRole("ADMIN", "MANAGER")
+
+                    // Endpoints de desarrollo
+                    .requestMatchers("/actuator/**").hasRole("ADMIN")
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
 
-                
-                // Cualquier otra petición requiere autenticación
-                .anyRequest().authenticated()
+                    .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         

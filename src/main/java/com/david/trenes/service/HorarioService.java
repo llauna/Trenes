@@ -269,20 +269,26 @@ public class HorarioService {
             })
             .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
     }
-    
+
     public Horario actualizarOcupacion(String id, Integer pasajerosActuales) {
         log.info("Actualizando ocupación de horario {}: {} pasajeros", id, pasajerosActuales);
-        
+
         return horarioRepository.findById(id)
-            .map(horario -> {
-                horario.setPasajerosActuales(pasajerosActuales);
-                if (horario.getCapacidadPasajeros() > 0) {
-                    horario.setOcupacionPorcentaje((double) pasajerosActuales / horario.getCapacidadPasajeros() * 100);
-                }
-                horario.setFechaActualizacion(LocalDateTime.now());
-                return horarioRepository.save(horario);
-            })
-            .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
+                .map(horario -> {
+                    int pax = (pasajerosActuales == null) ? 0 : pasajerosActuales;
+                    horario.setPasajerosActuales(pax);
+
+                    Integer cap = horario.getCapacidadPasajeros();
+                    if (cap != null && cap > 0) {
+                        horario.setOcupacionPorcentaje((double) pax / cap * 100);
+                    } else {
+                        horario.setOcupacionPorcentaje(0.0);
+                    }
+
+                    horario.setFechaActualizacion(LocalDateTime.now());
+                    return horarioRepository.save(horario);
+                })
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
     }
     
     public Horario actualizarTarifa(String id, Double nuevaTarifa) {

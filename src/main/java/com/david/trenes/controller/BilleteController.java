@@ -1,0 +1,121 @@
+package com.david.trenes.controller;
+
+import com.david.trenes.dto.BilleteResumenResponse;
+import com.david.trenes.dto.CompraBilleteRequest;
+import com.david.trenes.dto.CompraBilleteResponse;
+import com.david.trenes.dto.CompraBilletesResponse;
+import com.david.trenes.dto.DisponibilidadBilleteResponse;
+import com.david.trenes.model.Billete;
+import com.david.trenes.service.BilleteService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/v1/billetes")
+@RequiredArgsConstructor
+@Slf4j
+@CrossOrigin(origins = "*")
+public class BilleteController {
+
+    private final BilleteService billeteService;
+
+    @PostMapping("/compra")
+    public ResponseEntity<CompraBilletesResponse> comprar(@Valid @RequestBody CompraBilleteRequest request) {
+        log.info("Compra billetes: horarioId={}, pasajeros={}, origen={}, destino={}",
+                request.getHorarioId(), request.getPasajeroIds().size(), request.getEstacionOrigenId(), request.getEstacionDestinoId());
+
+        List<Billete> billetes = billeteService.comprarVarios(
+                request.getHorarioId(),
+                request.getPasajeroIds(),
+                request.getEstacionOrigenId(),
+                request.getEstacionDestinoId(),
+                request.getClase()
+        );
+
+        List<CompraBilleteResponse> items = billetes.stream()
+                .map(b -> CompraBilleteResponse.builder()
+                        .billeteId(b.getId())
+                        .codigoBillete(b.getCodigoBillete())
+                        .estado(b.getEstado().name())
+                        .build())
+                .toList();
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                CompraBilletesResponse.builder()
+                        .totalBilletes(items.size())
+                        .billetes(items)
+                        .build()
+        );
+    }
+
+    @GetMapping("/mis")
+    public ResponseEntity<List<BilleteResumenResponse>> misBilletes() {
+        List<Billete> billetes = billeteService.findBilletesDelUsuarioActual();
+
+        List<BilleteResumenResponse> response = billetes.stream()
+                .map(b -> BilleteResumenResponse.builder()
+                        .billeteId(b.getId())
+                        .codigoBillete(b.getCodigoBillete())
+                        .horarioId(b.getHorarioId())
+                        .pasajeroId(b.getPasajeroId())
+                        .estacionOrigenId(b.getEstacionOrigenId())
+                        .estacionDestinoId(b.getEstacionDestinoId())
+                        .clase(b.getClase())
+                        .estado(b.getEstado() != null ? b.getEstado().name() : null)
+                        .precioTotal(b.getPrecioTotal())
+                        .fechaCompra(b.getFechaCompra())
+                        .build())
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/pasajero/{pasajeroId}")
+    public ResponseEntity<List<BilleteResumenResponse>> billetesDePasajero(@PathVariable String pasajeroId) {
+        List<Billete> billetes = billeteService.findBilletesDePasajeroDelUsuarioActual(pasajeroId);
+
+        List<BilleteResumenResponse> response = billetes.stream()
+                .map(b -> BilleteResumenResponse.builder()
+                        .billeteId(b.getId())
+                        .codigoBillete(b.getCodigoBillete())
+                        .horarioId(b.getHorarioId())
+                        .pasajeroId(b.getPasajeroId())
+                        .estacionOrigenId(b.getEstacionOrigenId())
+                        .estacionDestinoId(b.getEstacionDestinoId())
+                        .clase(b.getClase())
+                        .estado(b.getEstado() != null ? b.getEstado().name() : null)
+                        .precioTotal(b.getPrecioTotal())
+                        .fechaCompra(b.getFechaCompra())
+                        .build())
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{billeteId}/cancelar")
+    public ResponseEntity<CompraBilleteResponse> cancelar(@PathVariable String billeteId) {
+        log.info("Cancelación billete: {}", billeteId);
+
+        Billete billete = billeteService.cancelarDelUsuarioActual(billeteId);
+
+        return ResponseEntity.ok(
+                CompraBilleteResponse.builder()
+                        .billeteId(billete.getId())
+                        .codigoBillete(billete.getCodigoBillete())
+                        .estado(billete.getEstado().name())
+                        .build()
+        );
+    }
+
+    @GetMapping("/disponibilidad")
+    public ResponseEntity<DisponibilidadBilleteResponse> disponibilidad(@RequestParam String horarioId) {
+        log.info("Disponibilidad billetes: horarioId={}", horarioId);
+        return ResponseEntity.ok(billeteService.getDisponibilidad(horarioId));
+    }
+}
