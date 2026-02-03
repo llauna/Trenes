@@ -3,6 +3,8 @@ package com.david.trenes.security;
 import com.david.trenes.model.Usuario;
 import com.david.trenes.repository.UsuarioRepository;
 import com.david.trenes.security.dto.*;
+import com.david.trenes.util.ValidationUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,16 +22,18 @@ import java.util.Optional;
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
 public class AuthController {
     
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
     private final UsuarioRepository usuarioRepository;
+    private final SecurityMonitoringService securityMonitoringService;
     
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
-        log.info("Autenticando usuario: {}", loginRequest.getUsername());
+    public ResponseEntity<AuthResponse> authenticateUser(@Valid @RequestBody LoginRequest loginRequest, HttpServletRequest request) {
+        String clientIp = getClientIp(request);
+        log.info("Autenticando usuario: {} desde IP: {}", loginRequest.getUsername(), clientIp);
         
         try {
             Authentication authentication = authenticationManager.authenticate(
@@ -43,6 +47,9 @@ public class AuthController {
             
             String jwt = tokenProvider.generateToken(authentication);
             
+            // Record successful login for monitoring
+            securityMonitoringService.recordSuccessfulLogin(clientIp, loginRequest.getUsername());
+            
             AuthResponse response = AuthResponse.builder()
                 .token(jwt)
                 .type("Bearer")
@@ -53,7 +60,11 @@ public class AuthController {
             return ResponseEntity.ok(response);
             
         } catch (Exception ex) {
-            log.error("Error en autenticación para usuario: {}", loginRequest.getUsername(), ex);
+            log.error("Error en autenticación para usuario: {} desde IP: {}", loginRequest.getUsername(), clientIp, ex);
+            
+            // Record failed login for monitoring
+            securityMonitoringService.recordFailedLogin(clientIp, loginRequest.getUsername());
+            
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(AuthResponse.builder()
                     .error("Credenciales inválidas")
@@ -163,28 +174,17 @@ public class AuthController {
         return ResponseEntity.ok().build();
     }
     
-    @PostMapping("/asignar-rol")
-    public ResponseEntity<String> asignarRol() {
-        log.info("Asignando rol USER al usuario David");
-        
-        try {
-            // Buscar usuario David
-            Optional<Usuario> usuarioOpt = usuarioRepository.findByUsername("David");
-            if (usuarioOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body("Usuario David no encontrado");
-            }
-            
-            Usuario usuario = usuarioOpt.get();
-            usuario.setRole("USER");
-            usuarioRepository.save(usuario);
-            
-            return ResponseEntity.ok("Rol USER asignado exitosamente al usuario David");
-            
-        } catch (Exception ex) {
-            log.error("Error asignando rol", ex);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Error asignando rol: " + ex.getMessage());
+    private String getClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
         }
+        
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        
+        return request.getRemoteAddr();
     }
 }

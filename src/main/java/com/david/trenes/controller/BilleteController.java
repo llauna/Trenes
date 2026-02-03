@@ -7,6 +7,7 @@ import com.david.trenes.dto.CompraBilletesResponse;
 import com.david.trenes.dto.DisponibilidadBilleteResponse;
 import com.david.trenes.model.Billete;
 import com.david.trenes.service.BilleteService;
+import com.david.trenes.util.ValidationUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,7 @@ import java.util.List;
 @RequestMapping("/api/v1/billetes")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
 public class BilleteController {
 
     private final BilleteService billeteService;
@@ -104,6 +105,7 @@ public class BilleteController {
 
     @GetMapping("/pasajero/{pasajeroId}")
     public ResponseEntity<List<BilleteResumenResponse>> billetesDePasajero(@PathVariable String pasajeroId) {
+        ValidationUtil.validarMongoId(pasajeroId, "pasajeroId");
         List<Billete> billetes = billeteService.findBilletesDePasajeroDelUsuarioActual(pasajeroId);
 
         List<BilleteResumenResponse> response = billetes.stream()
@@ -126,6 +128,7 @@ public class BilleteController {
 
     @PostMapping("/{billeteId}/cancelar")
     public ResponseEntity<CompraBilleteResponse> cancelar(@PathVariable String billeteId) {
+        ValidationUtil.validarMongoId(billeteId, "billeteId");
         log.info("Cancelación billete: {}", billeteId);
 
         Billete billete = billeteService.cancelarDelUsuarioActual(billeteId);
@@ -141,6 +144,7 @@ public class BilleteController {
 
     @GetMapping("/disponibilidad")
     public ResponseEntity<DisponibilidadBilleteResponse> disponibilidad(@RequestParam String horarioId) {
+        ValidationUtil.validarMongoId(horarioId, "horarioId");
         log.info("Disponibilidad billetes: horarioId={}", horarioId);
         return ResponseEntity.ok(billeteService.getDisponibilidad(horarioId));
     }

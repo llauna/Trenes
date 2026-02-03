@@ -16,7 +16,7 @@ import java.util.List;
 @RequestMapping("/api/v1/pasajeros")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
 public class PasajeroController {
 
     private final PasajeroService pasajeroService;
