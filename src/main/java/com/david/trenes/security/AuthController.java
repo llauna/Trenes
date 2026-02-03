@@ -1,5 +1,7 @@
 package com.david.trenes.security;
 
+import com.david.trenes.model.Usuario;
+import com.david.trenes.repository.UsuarioRepository;
 import com.david.trenes.security.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -21,6 +25,7 @@ public class AuthController {
     
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
+    private final UsuarioRepository usuarioRepository;
     
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
@@ -156,5 +161,30 @@ public class AuthController {
         SecurityContextHolder.clearContext();
         
         return ResponseEntity.ok().build();
+    }
+    
+    @PostMapping("/asignar-rol")
+    public ResponseEntity<String> asignarRol() {
+        log.info("Asignando rol USER al usuario David");
+        
+        try {
+            // Buscar usuario David
+            Optional<Usuario> usuarioOpt = usuarioRepository.findByUsername("David");
+            if (usuarioOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Usuario David no encontrado");
+            }
+            
+            Usuario usuario = usuarioOpt.get();
+            usuario.setRole("USER");
+            usuarioRepository.save(usuario);
+            
+            return ResponseEntity.ok("Rol USER asignado exitosamente al usuario David");
+            
+        } catch (Exception ex) {
+            log.error("Error asignando rol", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body("Error asignando rol: " + ex.getMessage());
+        }
     }
 }

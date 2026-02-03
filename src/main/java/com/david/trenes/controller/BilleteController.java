@@ -30,6 +30,32 @@ public class BilleteController {
         log.info("Compra billetes: horarioId={}, pasajeros={}, origen={}, destino={}",
                 request.getHorarioId(), request.getPasajeroIds().size(), request.getEstacionOrigenId(), request.getEstacionDestinoId());
 
+        if (request.getHorarioId() == null || request.getHorarioId().isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "horarioId es obligatorio"
+            );
+        }
+        if (request.getEstacionOrigenId() == null || request.getEstacionOrigenId().isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "estacionOrigenId es obligatorio"
+            );
+        }
+        if (request.getEstacionDestinoId() == null || request.getEstacionDestinoId().isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "estacionDestinoId es obligatorio"
+            );
+        }
+        if (request.getPasajeroIds() == null || request.getPasajeroIds().isEmpty()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "pasajeroIds debe contener al menos un pasajero"
+            );
+        }
+        if (request.getPasajeroIds().stream().anyMatch(id -> id == null || id.isBlank())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "pasajeroIds no puede contener valores nulos o vacíos"
+            );
+        }
+
         List<Billete> billetes = billeteService.comprarVarios(
                 request.getHorarioId(),
                 request.getPasajeroIds(),

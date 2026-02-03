@@ -1,14 +1,19 @@
 package com.david.trenes.model;
 
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -17,82 +22,104 @@ import java.util.List;
 @Builder
 @Document(collection = "horarios")
 public class Horario {
-    
+
     @Id
     private String id;
-    
+
+    @NotBlank(message = "codigoServicio es obligatorio")
     @Field("codigo_servicio")
     private String codigoServicio;
-    
+
+    @NotBlank(message = "trenId es obligatorio")
     @Field("tren_id")
     private String trenId;
-    
+
+    @NotBlank(message = "rutaId es obligatorio")
     @Field("ruta_id")
     private String rutaId;
-    
+
     @Field("numero_servicio")
     private String numeroServicio;
-    
+
+    @NotNull(message = "tipoServicio es obligatorio")
     @Field("tipo_servicio")
     private TipoServicio tipoServicio;
-    
+
+    @NotNull(message = "fechaSalida es obligatoria")
     @Field("fecha_salida")
     private LocalDateTime fechaSalida;
-    
+
+    @NotNull(message = "fechaLlegada es obligatoria")
     @Field("fecha_llegada")
     private LocalDateTime fechaLlegada;
-    
+
+    @NotBlank(message = "estacionOrigenId es obligatorio")
     @Field("estacion_origen_id")
     private String estacionOrigenId;
-    
+
+    @NotBlank(message = "estacionDestinoId es obligatorio")
     @Field("estacion_destino_id")
     private String estacionDestinoId;
-    
+
+    @Builder.Default
     @Field("paradas")
-    private List<ParadaHorario> paradas;
-    
+    private List<ParadaHorario> paradas = new ArrayList<>();
+
     @Field("conductor_id")
     private String conductorId;
-    
+
     @Field("conductor_suplente_id")
     private String conductorSuplenteId;
-    
+
+    @NotNull(message = "estado es obligatorio")
     @Field("estado")
     private EstadoHorario estado;
-    
+
     @Field("frecuencia")
     private FrecuenciaHorario frecuencia;
-    
+
+    @NotNull(message = "capacidadPasajeros es obligatoria")
+    @Positive(message = "capacidadPasajeros debe ser > 0")
     @Field("capacidad_pasajeros")
     private Integer capacidadPasajeros;
-    
+
+    @Builder.Default
+    @PositiveOrZero(message = "pasajerosActuales debe ser >= 0")
     @Field("pasajeros_actuales")
-    private Integer pasajerosActuales;
-    
+    private Integer pasajerosActuales = 0;
+
+    @Builder.Default
+    @PositiveOrZero(message = "ocupacionPorcentaje debe ser >= 0")
     @Field("ocupacion_porcentaje")
-    private Double ocupacionPorcentaje;
-    
+    private Double ocupacionPorcentaje = 0.0;
+
+    @NotNull(message = "tarifa es obligatoria")
+    @PositiveOrZero(message = "tarifa debe ser >= 0")
     @Field("tarifa")
     private Double tarifa;
-    
+
+    @Builder.Default
     @Field("clases")
-    private List<ClaseServicio> clases;
-    
+    private List<ClaseServicio> clases = new ArrayList<>();
+
     @Field("observaciones")
     private String observaciones;
-    
+
+    @Builder.Default
     @Field("incidencias")
-    private List<IncidenciaHorario> incidencias;
-    
+    private List<IncidenciaHorario> incidencias = new ArrayList<>();
+
+    @Builder.Default
+    @NotNull(message = "activo es obligatorio")
     @Field("activo")
-    private Boolean activo;
-    
+    private Boolean activo = Boolean.TRUE;
+
     @Field("fecha_creacion")
     private LocalDateTime fechaCreacion;
-    
+
     @Field("fecha_actualizacion")
     private LocalDateTime fechaActualizacion;
-    
+
     public enum TipoServicio {
         REGULAR,
         ESPECIAL,
@@ -101,7 +128,7 @@ public class Horario {
         CARGA,
         TURISTICO
     }
-    
+
     public enum EstadoHorario {
         PROGRAMADO,
         EN_MARCHA,
@@ -111,7 +138,7 @@ public class Horario {
         SUSPENDIDO,
         EMERGENCIA
     }
-    
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -130,7 +157,7 @@ public class Horario {
         private EstadoParada estado;
         private Integer retrasoMinutos;
     }
-    
+
     public enum EstadoParada {
         PENDIENTE,
         REALIZADA,
@@ -138,7 +165,7 @@ public class Horario {
         RETRASADA,
         CANCELADA
     }
-    
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -156,7 +183,7 @@ public class Horario {
         private LocalDateTime fechaFinVigencia;
         private String periodicidad; // DIARIO, SEMANAL, MENSUAL
     }
-    
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -168,7 +195,7 @@ public class Horario {
         private Integer pasajerosActuales;
         private Boolean disponible;
     }
-    
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -184,7 +211,7 @@ public class Horario {
         private LocalDateTime fechaResolucion;
         private String solucion;
     }
-    
+
     public enum TipoIncidencia {
         RETRASO,
         CANCELACION,

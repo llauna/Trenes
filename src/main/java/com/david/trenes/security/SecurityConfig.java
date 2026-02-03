@@ -23,8 +23,21 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
     
+    private final JwtTokenProvider tokenProvider;
+    private final MongoUserDetailsService userDetailsService;
+    
+    public SecurityConfig(JwtTokenProvider tokenProvider, MongoUserDetailsService userDetailsService) {
+        this.tokenProvider = tokenProvider;
+        this.userDetailsService = userDetailsService;
+    }
+    
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(tokenProvider, userDetailsService);
+    }
+    
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)
@@ -32,6 +45,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                     // Endpoints públicos (sin autenticación)
                     .requestMatchers("/api/v1/auth/**").permitAll()
+                    .requestMatchers("/api/v1/auth/asignar-rol").permitAll()
                     .requestMatchers("/api/v1/estaciones/**").permitAll()
                     .requestMatchers("/api/v1/rutas/**").permitAll()
                     .requestMatchers("/api/v1/horarios/**").permitAll()
@@ -58,7 +72,7 @@ public class SecurityConfig {
 
                     .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         
         return http.build();
     }

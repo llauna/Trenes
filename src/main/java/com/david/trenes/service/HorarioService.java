@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -163,29 +164,47 @@ public class HorarioService {
         log.debug("Buscando horarios en marcha");
         return horarioRepository.findHorariosEnMarcha();
     }
-    
+
     public Horario save(Horario horario) {
         log.info("Guardando horario: {}", horario.getCodigoServicio());
-        
+
+        validarHorarioParaPersistencia(horario);
+
         if (horario.getFechaCreacion() == null) {
             horario.setFechaCreacion(LocalDateTime.now());
         }
         horario.setFechaActualizacion(LocalDateTime.now());
-        
+
         return horarioRepository.save(horario);
     }
-    
+
     public Horario update(String id, Horario horarioActualizado) {
         log.info("Actualizando horario con ID: {}", id);
-        
+
+        validarHorarioParaPersistencia(horarioActualizado);
+
         return horarioRepository.findById(id)
-            .map(horarioExistente -> {
-                horarioActualizado.setId(id);
-                horarioActualizado.setFechaCreacion(horarioExistente.getFechaCreacion());
-                horarioActualizado.setFechaActualizacion(LocalDateTime.now());
-                return horarioRepository.save(horarioActualizado);
-            })
-            .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
+                .map(horarioExistente -> {
+                    horarioActualizado.setId(id);
+                    horarioActualizado.setFechaCreacion(horarioExistente.getFechaCreacion());
+                    horarioActualizado.setFechaActualizacion(LocalDateTime.now());
+                    return horarioRepository.save(horarioActualizado);
+                })
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
+    }
+
+    private void validarHorarioParaPersistencia(Horario horario) {
+        if (horario == null) {
+            throw new IllegalArgumentException("Horario no puede ser null");
+        }
+        if (horario.getTrenId() == null || horario.getTrenId().isBlank()) {
+            throw new IllegalArgumentException("Horario inválido: trenId es obligatorio");
+        }
+        // Opcional pero recomendable: si tu dominio lo requiere, valida también:
+        // - rutaId
+        // - estacionOrigenId / estacionDestinoId
+        // - fechaSalida / fechaLlegada
+        // - tarifa / capacidadPasajeros, etc.
     }
     
     public void deleteById(String id) {
@@ -302,44 +321,52 @@ public class HorarioService {
             })
             .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
     }
-    
+
     public Horario registrarIncidencia(String id, Horario.IncidenciaHorario incidencia) {
         log.info("Registrando incidencia en horario: {}", id);
-        
+
         return horarioRepository.findById(id)
-            .map(horario -> {
-                incidencia.setId(java.util.UUID.randomUUID().toString());
-                incidencia.setFecha(LocalDateTime.now());
-                horario.getIncidencias().add(incidencia);
-                horario.setFechaActualizacion(LocalDateTime.now());
-                return horarioRepository.save(horario);
-            })
-            .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
+                .map(horario -> {
+                    incidencia.setId(java.util.UUID.randomUUID().toString());
+                    incidencia.setFecha(LocalDateTime.now());
+
+                    if (horario.getIncidencias() == null) {
+                        horario.setIncidencias(new ArrayList<>());
+                    }
+                    horario.getIncidencias().add(incidencia);
+
+                    horario.setFechaActualizacion(LocalDateTime.now());
+                    return horarioRepository.save(horario);
+                })
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
     }
-    
+
     public Horario registrarRetraso(String id, Integer minutosRetraso, String motivo) {
         log.info("Registrando retraso de {} minutos en horario: {}", minutosRetraso, id);
-        
+
         return horarioRepository.findById(id)
-            .map(horario -> {
-                Horario.IncidenciaHorario incidencia = Horario.IncidenciaHorario.builder()
-                    .id(java.util.UUID.randomUUID().toString())
-                    .fecha(LocalDateTime.now())
-                    .tipo(Horario.TipoIncidencia.RETRASO)
-                    .descripcion("Retraso de " + minutosRetraso + " minutos: " + motivo)
-                    .retrasoMinutos(minutosRetraso)
-                    .resuelta(false)
-                    .build();
-                
-                horario.getIncidencias().add(incidencia);
-                
-                if (horario.getEstado() == Horario.EstadoHorario.PROGRAMADO) {
-                    horario.setEstado(Horario.EstadoHorario.RETRASADO);
-                }
-                
-                horario.setFechaActualizacion(LocalDateTime.now());
-                return horarioRepository.save(horario);
-            })
-            .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
+                .map(horario -> {
+                    Horario.IncidenciaHorario incidencia = Horario.IncidenciaHorario.builder()
+                            .id(java.util.UUID.randomUUID().toString())
+                            .fecha(LocalDateTime.now())
+                            .tipo(Horario.TipoIncidencia.RETRASO)
+                            .descripcion("Retraso de " + minutosRetraso + " minutos: " + motivo)
+                            .retrasoMinutos(minutosRetraso)
+                            .resuelta(false)
+                            .build();
+
+                    if (horario.getIncidencias() == null) {
+                        horario.setIncidencias(new ArrayList<>());
+                    }
+                    horario.getIncidencias().add(incidencia);
+
+                    if (horario.getEstado() == Horario.EstadoHorario.PROGRAMADO) {
+                        horario.setEstado(Horario.EstadoHorario.RETRASADO);
+                    }
+
+                    horario.setFechaActualizacion(LocalDateTime.now());
+                    return horarioRepository.save(horario);
+                })
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + id));
     }
 }
