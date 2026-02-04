@@ -69,6 +69,8 @@ public class GestionHorariosService {
     }
 
     private void crearHorariosDiarios(Ruta ruta, LocalDateTime fecha) {
+        log.info("Creando horarios diarios para ruta: {} en fecha: {}", ruta.getCodigoRuta(), fecha.toLocalDate());
+        
         LocalTime horaPrimeraSalida = LocalTime.parse(ruta.getFrecuencia().getHoraPrimeraSalida());
         LocalTime horaUltimaSalida = LocalTime.parse(ruta.getFrecuencia().getHoraUltimaSalida());
         int intervaloMinutos = ruta.getFrecuencia().getIntervaloMinutos();
@@ -128,10 +130,21 @@ public class GestionHorariosService {
     }
 
     private Horario crearHorario(Ruta ruta, Tren tren, LocalDateTime fechaSalida, LocalDateTime fechaLlegada, int numeroServicio) {
+        log.info("Creando horario para ruta: {} con tren: {}", ruta.getCodigoRuta(), tren.getNumeroTren());
+        
+        List<Ruta.ParadaRuta> estacionesIntermedias = ruta.getEstacionesIntermedias();
+        if (estacionesIntermedias == null) {
+            estacionesIntermedias = new ArrayList<>();
+            log.warn("La ruta {} no tiene estaciones intermedias, creando lista vacía", ruta.getCodigoRuta());
+        }
+        log.info("Estaciones intermedias en ruta: {}", estacionesIntermedias.size());
+        
         List<Horario.ParadaHorario> paradasHorario = new ArrayList<>();
         
         // Crear paradas basadas en las paradas de la ruta
-        for (Ruta.ParadaRuta paradaRuta : ruta.getEstacionesIntermedias()) {
+        for (Ruta.ParadaRuta paradaRuta : estacionesIntermedias) {
+            log.info("Procesando parada: {} - {}", paradaRuta.getOrden(), paradaRuta.getNombreEstacion());
+            
             LocalDateTime horaLlegadaParada = fechaSalida.plusMinutes(
                 (long) (paradaRuta.getKilometro() / ruta.getDistanciaTotalKm() * ruta.getTiempoEstimadoMinutos())
             );
@@ -142,7 +155,7 @@ public class GestionHorariosService {
                     .nombreEstacion(paradaRuta.getNombreEstacion())
                     .orden(paradaRuta.getOrden())
                     .horaLlegadaProgramada(paradaRuta.getOrden() == 1 ? null : horaLlegadaParada)
-                    .horaSalidaProgramada(paradaRuta.getOrden() == ruta.getEstacionesIntermedias().size() ? null : horaSalidaParada)
+                    .horaSalidaProgramada(paradaRuta.getOrden() == estacionesIntermedias.size() ? null : horaSalidaParada)
                     .tiempoParadaMinutos(paradaRuta.getTiempoParadaMinutos())
                     .paradaObligatoria(paradaRuta.getObligatoria())
                     .andenAsignado(null) // Se asignará dinámicamente
@@ -153,8 +166,11 @@ public class GestionHorariosService {
             paradasHorario.add(paradaHorario);
         }
 
+        log.info("Paradas creadas: {}", paradasHorario.size());
+
         // Crear clases de servicio según el tipo de tren
         List<Horario.ClaseServicio> clases = crearClasesServicio(tren);
+        log.info("Clases creadas: {}", clases.size());
 
         Horario horario = Horario.builder()
                 .id(UUID.randomUUID().toString())
@@ -184,6 +200,7 @@ public class GestionHorariosService {
                 .fechaActualizacion(LocalDateTime.now())
                 .build();
 
+        log.info("Horario creado con código: {}", horario.getCodigoServicio());
         return horario;
     }
 

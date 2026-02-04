@@ -20,30 +20,35 @@ public class RutaDataService {
     public void crearRutasDeEjemplo() {
         log.info("Creando rutas de ejemplo para enriquecer el sistema");
         
-        // Crear ruta expreso Madrid-Barcelona
-        crearRutaExpresoMadridBarcelona();
-        
-        // Crear ruta regional Valencia-Alicante
-        crearRutaRegionalValenciaAlicante();
-        
-        // Crear ruta de mercancías Bilbao-Zaragoza
-        crearRutaMercanciasBilbaoZaragoza();
-        
-        // Crear ruta turística Santiago de Compostela-A Coruña
-        crearRutaTuristicaSantiagoCoruña();
-        
-        // Crear ruta de cercanías Madrid-Toledo
-        crearRutaCercaniasMadridToledo();
-        
-        // Nuevas rutas adicionales
-        crearRutaExpresoMadridSevilla();
-        crearRutaCercaniasBarcelona();
-        crearRutaCargaValenciaMurcia();
-        crearRutaTuristicaRutaDonQuijote();
-        crearRutaInternacionalMadridParis();
-        crearRutaEspecialTrenNavidad();
-        
-        log.info("Rutas de ejemplo creadas exitosamente");
+        try {
+            // Crear ruta expreso Madrid-Barcelona
+            crearRutaExpresoMadridBarcelona();
+            
+            // Crear ruta regional Valencia-Alicante
+            crearRutaRegionalValenciaAlicante();
+            
+            // Crear ruta de mercancías Bilbao-Zaragoza
+            crearRutaMercanciasBilbaoZaragoza();
+            
+            // Crear ruta turística Santiago de Compostela-A Coruña
+            crearRutaTuristicaSantiagoCoruña();
+            
+            // Crear ruta de cercanías Madrid-Toledo
+            crearRutaCercaniasMadridToledo();
+            
+            // Nuevas rutas adicionales
+            crearRutaExpresoMadridSevilla();
+            crearRutaCercaniasBarcelona();
+            crearRutaCargaValenciaMurcia();
+            crearRutaTuristicaRutaDonQuijote();
+            crearRutaInternacionalMadridParis();
+            crearRutaEspecialTrenNavidad();
+            
+            log.info("Rutas de ejemplo creadas exitosamente");
+        } catch (Exception e) {
+            log.error("Error al crear rutas de ejemplo: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     private void crearRutaExpresoMadridBarcelona() {
@@ -525,96 +530,102 @@ public class RutaDataService {
     }
 
     private void crearRutaExpresoMadridSevilla() {
-        List<Ruta.ParadaRuta> paradas = new ArrayList<>();
-        paradas.add(Ruta.ParadaRuta.builder()
-                .estacionId("EST-MADRID-001")
-                .nombreEstacion("Madrid Atocha")
-                .orden(1)
-                .kilometro(0.0)
-                .tiempoParadaMinutos(0)
-                .obligatoria(true)
-                .build());
-        
-        paradas.add(Ruta.ParadaRuta.builder()
-                .estacionId("EST-CIUDADREAL-001")
-                .nombreEstacion("Ciudad Real")
-                .orden(2)
-                .kilometro(170.0)
-                .tiempoParadaMinutos(3)
-                .obligatoria(false)
-                .build());
-        
-        paradas.add(Ruta.ParadaRuta.builder()
-                .estacionId("EST-CORDOBA-001")
-                .nombreEstacion("Córdoba")
-                .orden(3)
-                .kilometro(340.0)
-                .tiempoParadaMinutos(5)
-                .obligatoria(true)
-                .build());
-        
-        paradas.add(Ruta.ParadaRuta.builder()
-                .estacionId("EST-SEVILLA-001")
-                .nombreEstacion("Sevilla Santa Justa")
-                .orden(4)
-                .kilometro(470.0)
-                .tiempoParadaMinutos(0)
-                .obligatoria(true)
-                .build());
+        try {
+            log.info("Creando ruta Expreso Madrid-Sevilla...");
+            List<Ruta.ParadaRuta> paradas = new ArrayList<>();
+            paradas.add(Ruta.ParadaRuta.builder()
+                    .estacionId("EST-MADRID-001")
+                    .nombreEstacion("Madrid Atocha")
+                    .orden(1)
+                    .kilometro(0.0)
+                    .tiempoParadaMinutos(0)
+                    .obligatoria(true)
+                    .build());
+            
+            paradas.add(Ruta.ParadaRuta.builder()
+                    .estacionId("EST-CIUDADREAL-001")
+                    .nombreEstacion("Ciudad Real")
+                    .orden(2)
+                    .kilometro(170.0)
+                    .tiempoParadaMinutos(3)
+                    .obligatoria(false)
+                    .build());
+            
+            paradas.add(Ruta.ParadaRuta.builder()
+                    .estacionId("EST-CORDOBA-001")
+                    .nombreEstacion("Córdoba")
+                    .orden(3)
+                    .kilometro(340.0)
+                    .tiempoParadaMinutos(5)
+                    .obligatoria(true)
+                    .build());
+            
+            paradas.add(Ruta.ParadaRuta.builder()
+                    .estacionId("EST-SEVILLA-001")
+                    .nombreEstacion("Sevilla Santa Justa")
+                    .orden(4)
+                    .kilometro(470.0)
+                    .tiempoParadaMinutos(0)
+                    .obligatoria(true)
+                    .build());
 
-        List<Ruta.ViaRuta> vias = new ArrayList<>();
-        vias.add(Ruta.ViaRuta.builder()
-                .viaId("VIA-MAD-SEV-001")
-                .nombreVia("Línea de Alta Velocidad Madrid-Sevilla")
-                .orden(1)
-                .kilometroInicio(0.0)
-                .kilometroFin(470.0)
-                .distancia(470.0)
-                .estacionOrigenId("EST-MADRID-001")
-                .estacionDestinoId("EST-SEVILLA-001")
-                .build());
+            List<Ruta.ViaRuta> vias = new ArrayList<>();
+            vias.add(Ruta.ViaRuta.builder()
+                    .viaId("VIA-MAD-SEV-001")
+                    .nombreVia("Línea de Alta Velocidad Madrid-Sevilla")
+                    .orden(1)
+                    .kilometroInicio(0.0)
+                    .kilometroFin(470.0)
+                    .distancia(470.0)
+                    .estacionOrigenId("EST-MADRID-001")
+                    .estacionDestinoId("EST-SEVILLA-001")
+                    .build());
 
-        Ruta.FrecuenciaRuta frecuencia = Ruta.FrecuenciaRuta.builder()
-                .lunes(true)
-                .martes(true)
-                .miercoles(true)
-                .jueves(true)
-                .viernes(true)
-                .sabado(true)
-                .domingo(true)
-                .festivos(true)
-                .serviciosDia(12)
-                .horaPrimeraSalida("06:30")
-                .horaUltimaSalida("21:30")
-                .intervaloMinutos(90)
-                .build();
+            Ruta.FrecuenciaRuta frecuencia = Ruta.FrecuenciaRuta.builder()
+                    .lunes(true)
+                    .martes(true)
+                    .miercoles(true)
+                    .jueves(true)
+                    .viernes(true)
+                    .sabado(true)
+                    .domingo(true)
+                    .festivos(true)
+                    .serviciosDia(12)
+                    .horaPrimeraSalida("06:30")
+                    .horaUltimaSalida("21:30")
+                    .intervaloMinutos(90)
+                    .build();
 
-        Ruta ruta = Ruta.builder()
-                .id(UUID.randomUUID().toString())
-                .codigoRuta("EXP-MAD-SEV-001")
-                .nombre("Expreso Madrid-Sevilla")
-                .descripcion("Ruta de alta velocidad AVE Madrid-Sevilla")
-                .tipoRuta(Ruta.TipoRuta.EXPRESO)
-                .estacionOrigenId("EST-MADRID-001")
-                .estacionDestinoId("EST-SEVILLA-001")
-                .estacionesIntermedias(paradas)
-                .vias(vias)
-                .distanciaTotalKm(470.0)
-                .tiempoEstimadoMinutos(150)
-                .velocidadPromedio(188.0)
-                .estado(Ruta.EstadoRuta.ACTIVA)
-                .frecuencia(frecuencia)
-                .prioridad(1)
-                .restricciones(new ArrayList<>())
-                .tarifaBase(75.30)
-                .zonas(List.of("CENTRO", "SUR"))
-                .activo(true)
-                .fechaCreacion(LocalDateTime.now())
-                .fechaActualizacion(LocalDateTime.now())
-                .build();
+            Ruta ruta = Ruta.builder()
+                    .id(UUID.randomUUID().toString())
+                    .codigoRuta("EXP-MAD-SEV-001")
+                    .nombre("Expreso Madrid-Sevilla")
+                    .descripcion("Ruta de alta velocidad AVE Madrid-Sevilla")
+                    .tipoRuta(Ruta.TipoRuta.EXPRESO)
+                    .estacionOrigenId("EST-MADRID-001")
+                    .estacionDestinoId("EST-SEVILLA-001")
+                    .estacionesIntermedias(paradas)
+                    .vias(vias)
+                    .distanciaTotalKm(470.0)
+                    .tiempoEstimadoMinutos(150)
+                    .velocidadPromedio(188.0)
+                    .estado(Ruta.EstadoRuta.ACTIVA)
+                    .frecuencia(frecuencia)
+                    .prioridad(1)
+                    .restricciones(new ArrayList<>())
+                    .tarifaBase(75.30)
+                    .zonas(List.of("CENTRO", "SUR"))
+                    .activo(true)
+                    .fechaCreacion(LocalDateTime.now())
+                    .fechaActualizacion(LocalDateTime.now())
+                    .build();
 
-        rutaService.save(ruta);
-        log.info("Ruta expreso Madrid-Sevilla creada");
+            rutaService.save(ruta);
+            log.info("Ruta expreso Madrid-Sevilla creada exitosamente");
+        } catch (Exception e) {
+            log.error("Error al crear ruta Expreso Madrid-Sevilla: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     private void crearRutaCercaniasBarcelona() {

@@ -2,6 +2,7 @@ package com.david.trenes.controller;
 
 import com.david.trenes.model.Ruta;
 import com.david.trenes.service.RutaDataService;
+import com.david.trenes.service.RutaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.List;
 public class RutaDataController {
 
     private final RutaDataService rutaDataService;
+    private final RutaService rutaService;
 
     @PostMapping("/crear-rutas-ejemplo")
     public ResponseEntity<String> crearRutasDeEjemplo() {
@@ -29,6 +31,23 @@ public class RutaDataController {
             log.error("Error al crear rutas de ejemplo", e);
             return ResponseEntity.internalServerError()
                     .body("Error al crear rutas de ejemplo: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/limpiar-rutas")
+    public ResponseEntity<String> limpiarRutas() {
+        log.info("Limpiando todas las rutas existentes");
+        
+        try {
+            List<Ruta> rutas = rutaService.findAll();
+            for (Ruta ruta : rutas) {
+                rutaService.deleteById(ruta.getId());
+            }
+            return ResponseEntity.ok("Rutas limpiadas exitosamente. Se eliminaron " + rutas.size() + " rutas.");
+        } catch (Exception e) {
+            log.error("Error al limpiar rutas", e);
+            return ResponseEntity.internalServerError()
+                    .body("Error al limpiar rutas: " + e.getMessage());
         }
     }
 
