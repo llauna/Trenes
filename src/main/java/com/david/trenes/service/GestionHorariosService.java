@@ -22,17 +22,33 @@ public class GestionHorariosService {
     private final RutaService rutaService;
     private final TrenService trenService;
 
+    // Índices para rotación de trenes por tipo
+    private final java.util.Map<Tren.TipoTren, Integer> indicesRotacion = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // Margen entre servicios para el mismo tren (limpieza, cambio de tripulación, maniobras, etc.)
+    private static final java.time.Duration MARGEN_ENTRE_SERVICIOS = java.time.Duration.ofMinutes(15);
+
     public void crearHorariosProgramados() {
         log.info("Creando horarios programados para el sistema");
-        
-        // Obtener rutas activas
+
         List<Ruta> rutasActivas = rutaService.findByEstado(Ruta.EstadoRuta.ACTIVA);
-        
+        if (rutasActivas == null || rutasActivas.isEmpty()) {
+            // fallback por si tu data está usando "activo=true" y el estado no cuadra
+            rutasActivas = rutaService.findRutasActivas();
+        }
+
+        log.info("Se encontraron {} rutas a procesar", rutasActivas == null ? 0 : rutasActivas.size());
+
+        if (rutasActivas == null) {
+            return;
+        }
+
         for (Ruta ruta : rutasActivas) {
+            log.info("Procesando ruta: {} - {}", ruta.getCodigoRuta(), ruta.getNombre());
             crearHorariosParaRuta(ruta);
         }
-        
-        log.info("Horarios programados creados exitosamente");
+
+        log.info("Horarios programados creados (proceso finalizado)");
     }
 
     private void crearHorariosParaRuta(Ruta ruta) {
@@ -41,44 +57,36 @@ public class GestionHorariosService {
             return;
         }
 
-        // Crear horarios para los próximos 7 días
         LocalDateTime fechaBase = LocalDateTime.now().toLocalDate().atStartOfDay();
-        
+
         for (int dia = 0; dia < 7; dia++) {
             LocalDateTime fechaActual = fechaBase.plusDays(dia);
-            
+
             if (debeCrearHorarioParaDia(fechaActual, ruta.getFrecuencia())) {
                 crearHorariosDiarios(ruta, fechaActual);
             }
         }
     }
 
-    private boolean debeCrearHorarioParaDia(LocalDateTime fecha, Ruta.FrecuenciaRuta frecuencia) {
-        int diaSemana = fecha.getDayOfWeek().getValue(); // 1 = Lunes, 7 = Domingo
-        
-        switch (diaSemana) {
-            case 1: return frecuencia.getLunes();
-            case 2: return frecuencia.getMartes();
-            case 3: return frecuencia.getMiercoles();
-            case 4: return frecuencia.getJueves();
-            case 5: return frecuencia.getViernes();
-            case 6: return frecuencia.getSabado();
-            case 7: return frecuencia.getDomingo();
-            default: return false;
-        }
-    }
-
     private void crearHorariosDiarios(Ruta ruta, LocalDateTime fecha) {
         log.info("Creando horarios diarios para ruta: {} en fecha: {}", ruta.getCodigoRuta(), fecha.toLocalDate());
-        
+
+        if (ruta.getFrecuencia() == null) {
+            log.warn("La ruta {} no tiene configuración de frecuencia", ruta.getCodigoRuta());
+            return;
+        }
+
         LocalTime horaPrimeraSalida = LocalTime.parse(ruta.getFrecuencia().getHoraPrimeraSalida());
         LocalTime horaUltimaSalida = LocalTime.parse(ruta.getFrecuencia().getHoraUltimaSalida());
         int intervaloMinutos = ruta.getFrecuencia().getIntervaloMinutos();
         int serviciosDia = ruta.getFrecuencia().getServiciosDia();
 
+        log.info("Configuración ruta {} - Servicios día: {}, Intervalo: {} min, Hora inicio: {}, Hora fin: {}",
+                ruta.getCodigoRuta(), serviciosDia, intervaloMinutos, horaPrimeraSalida, horaUltimaSalida);
+
         for (int servicio = 0; servicio < serviciosDia; servicio++) {
-            LocalTime horaSalida = horaPrimeraSalida.plusMinutes(servicio * intervaloMinutos);
-            
+            LocalTime horaSalida = horaPrimeraSalida.plusMinutes((long) servicio * intervaloMinutos);
+
             if (horaSalida.isAfter(horaUltimaSalida)) {
                 break;
             }
@@ -86,47 +94,96 @@ public class GestionHorariosService {
             LocalDateTime fechaSalida = fecha.with(horaSalida);
             LocalDateTime fechaLlegada = fechaSalida.plusMinutes(ruta.getTiempoEstimadoMinutos());
 
-            // Buscar tren disponible según el tipo de ruta
             Tren.TipoTren tipoTrenRequerido = obtenerTipoTrenParaRuta(ruta.getTipoRuta());
-            List<Tren> trenesDisponibles = trenService.findByTipoTren(tipoTrenRequerido);
-            
-            // Filtrar trenes en estado DETENIDO
-            trenesDisponibles = trenesDisponibles.stream()
-                    .filter(tren -> tren.getEstadoActual() == Tren.EstadoTren.DETENIDO)
-                    .collect(java.util.stream.Collectors.toList());
-            
-            if (trenesDisponibles.isEmpty()) {
-                log.warn("No hay trenes disponibles para la ruta {} en el horario {}", ruta.getCodigoRuta(), fechaSalida);
+            log.info("Tipo de tren requerido para ruta {}: {}", ruta.getCodigoRuta(), tipoTrenRequerido);
+
+            Tren trenAsignado = obtenerTrenRotativo(tipoTrenRequerido, fechaSalida, fechaLlegada);
+
+            if (trenAsignado == null) {
+                log.warn("No hay trenes disponibles para la ruta {} en el horario {} (ocupados por solape)",
+                        ruta.getCodigoRuta(), fechaSalida);
                 continue;
             }
 
-            Tren trenAsignado = trenesDisponibles.get(0); // Asignar el primer tren disponible
-
             Horario horario = crearHorario(ruta, trenAsignado, fechaSalida, fechaLlegada, servicio + 1);
             horarioService.save(horario);
-            
+
             log.info("Horario creado: {} - {} a {}", horario.getCodigoServicio(), horario.getFechaSalida(), horario.getFechaLlegada());
         }
     }
 
-    private Tren.TipoTren obtenerTipoTrenParaRuta(Ruta.TipoRuta tipoRuta) {
-        switch (tipoRuta) {
-            case EXPRESO:
-            case INTERNACIONAL:
-                return Tren.TipoTren.ALTA_VELOCIDAD;
-            case REGIONAL:
-                return Tren.TipoTren.REGIONAL;
-            case CERCANIAS:
-                return Tren.TipoTren.CERCANIAS;
-            case CARGA:
-                return Tren.TipoTren.CARGA;
-            case TURISTICO:
-                return Tren.TipoTren.TURISTICO;
-            case ESPECIAL:
-                return Tren.TipoTren.ESPECIAL;
-            default:
-                return Tren.TipoTren.REGIONAL;
+    private Tren obtenerTrenRotativo(Tren.TipoTren tipoTren, LocalDateTime salida, LocalDateTime llegada) {
+        log.info("Buscando tren rotativo tipo: {} para intervalo: {} -> {}", tipoTren, salida, llegada);
+
+        List<Tren> trenesDelTipo = trenService.findByTipoTren(tipoTren);
+        log.info("Se encontraron {} trenes del tipo {}", trenesDelTipo.size(), tipoTren);
+
+        List<Tren> trenesDisponibles = trenesDelTipo.stream()
+                .filter(tren -> tren.getEstadoActual() == Tren.EstadoTren.DETENIDO)
+                .filter(tren -> !trenTieneSolape(tren.getId(), salida, llegada))
+                .toList();
+
+        log.info("Trenes disponibles después de filtrar por solape: {}", trenesDisponibles.size());
+
+        if (trenesDisponibles.isEmpty()) {
+            return null;
         }
+
+        int indiceActual = indicesRotacion.getOrDefault(tipoTren, 0);
+        Tren trenSeleccionado = trenesDisponibles.get(indiceActual % trenesDisponibles.size());
+        indicesRotacion.put(tipoTren, (indiceActual + 1) % trenesDisponibles.size());
+
+        log.info("Tren asignado rotativamente: {} (tipo: {}, índice: {})",
+                trenSeleccionado.getNumeroTren(), tipoTren, indiceActual);
+
+        return trenSeleccionado;
+    }
+
+    private boolean trenTieneSolape(String trenId, LocalDateTime nuevaSalida, LocalDateTime nuevaLlegada) {
+        List<Horario> horariosDelTren = horarioService.findByTrenId(trenId);
+
+        LocalDateTime nuevaSalidaConMargen = nuevaSalida.minus(MARGEN_ENTRE_SERVICIOS);
+        LocalDateTime nuevaLlegadaConMargen = nuevaLlegada.plus(MARGEN_ENTRE_SERVICIOS);
+
+        return horariosDelTren.stream()
+                .filter(h -> h.getEstado() == Horario.EstadoHorario.PROGRAMADO || h.getEstado() == Horario.EstadoHorario.EN_MARCHA)
+                .anyMatch(h -> {
+                    LocalDateTime existenteSalida = h.getFechaSalida();
+                    LocalDateTime existenteLlegada = h.getFechaLlegada();
+
+                    LocalDateTime existenteSalidaConMargen = existenteSalida.minus(MARGEN_ENTRE_SERVICIOS);
+                    LocalDateTime existenteLlegadaConMargen = existenteLlegada.plus(MARGEN_ENTRE_SERVICIOS);
+
+                    return nuevaSalidaConMargen.isBefore(existenteLlegadaConMargen)
+                            && existenteSalidaConMargen.isBefore(nuevaLlegadaConMargen);
+                });
+    }
+
+    private boolean debeCrearHorarioParaDia(LocalDateTime fecha, Ruta.FrecuenciaRuta frecuencia) {
+        int diaSemana = fecha.getDayOfWeek().getValue(); // 1 = Lunes, 7 = Domingo
+
+        return switch (diaSemana) {
+            case 1 -> frecuencia.getLunes();
+            case 2 -> frecuencia.getMartes();
+            case 3 -> frecuencia.getMiercoles();
+            case 4 -> frecuencia.getJueves();
+            case 5 -> frecuencia.getViernes();
+            case 6 -> frecuencia.getSabado();
+            case 7 -> frecuencia.getDomingo();
+            default -> false;
+        };
+    }
+
+    private Tren.TipoTren obtenerTipoTrenParaRuta(Ruta.TipoRuta tipoRuta) {
+        return switch (tipoRuta) {
+            case EXPRESO, INTERNACIONAL -> Tren.TipoTren.ALTA_VELOCIDAD;
+            case REGIONAL -> Tren.TipoTren.REGIONAL;
+            case CERCANIAS -> Tren.TipoTren.CERCANIAS;
+            case CARGA -> Tren.TipoTren.CARGA;
+            case TURISTICO -> Tren.TipoTren.TURISTICO;
+            case ESPECIAL -> Tren.TipoTren.ESPECIAL;
+            default -> Tren.TipoTren.REGIONAL;
+        };
     }
 
     private Horario crearHorario(Ruta ruta, Tren tren, LocalDateTime fechaSalida, LocalDateTime fechaLlegada, int numeroServicio) {
@@ -312,6 +369,57 @@ public class GestionHorariosService {
             log.error("Error al actualizar estado de parada: {}", horarioId, e);
             return false;
         }
+    }
+
+    private Tren obtenerTrenRotativo(Tren.TipoTren tipoTren, java.time.LocalDate fecha) {
+        log.info("Buscando tren rotativo tipo: {} para fecha: {}", tipoTren, fecha);
+        
+        // Obtener todos los trenes del tipo requerido
+        List<Tren> trenesDelTipo = trenService.findByTipoTren(tipoTren);
+        log.info("Se encontraron {} trenes del tipo {}", trenesDelTipo.size(), tipoTren);
+        
+        // Filtrar trenes disponibles (DETENIDO y sin horario para este día)
+        List<Tren> trenesDisponibles = trenesDelTipo.stream()
+                .filter(tren -> {
+                    boolean detenido = tren.getEstadoActual() == Tren.EstadoTren.DETENIDO;
+                    boolean sinHorario = !trenTieneHorarioAsignadoParaDia(tren.getId(), fecha);
+                    log.debug("Tren {} - Estado: {}, Sin horario: {}", tren.getNumeroTren(), tren.getEstadoActual(), sinHorario);
+                    return detenido && sinHorario;
+                })
+                .collect(java.util.stream.Collectors.toList());
+        
+        log.info("Trenes disponibles después de filtrar: {}", trenesDisponibles.size());
+        
+        if (trenesDisponibles.isEmpty()) {
+            log.warn("No hay trenes disponibles del tipo {} para la fecha {}", tipoTren, fecha);
+            return null;
+        }
+        
+        // Obtener índice de rotación para este tipo de tren
+        int indiceActual = indicesRotacion.getOrDefault(tipoTren, 0);
+        
+        // Seleccionar tren de forma rotativa
+        Tren trenSeleccionado = trenesDisponibles.get(indiceActual % trenesDisponibles.size());
+        
+        // Actualizar índice para próxima asignación
+        indicesRotacion.put(tipoTren, (indiceActual + 1) % trenesDisponibles.size());
+        
+        log.info("Tren asignado rotativamente: {} (tipo: {}, índice: {})", 
+                trenSeleccionado.getNumeroTren(), tipoTren, indiceActual);
+        
+        return trenSeleccionado;
+    }
+
+    private boolean trenTieneHorarioAsignadoParaDia(String trenId, java.time.LocalDate fecha) {
+        List<Horario> horariosDelTren = horarioService.findByTrenId(trenId);
+        
+        return horariosDelTren.stream()
+                .anyMatch(horario -> {
+                    LocalDateTime fechaSalida = horario.getFechaSalida();
+                    return fechaSalida.toLocalDate().equals(fecha) && 
+                           (horario.getEstado() == Horario.EstadoHorario.PROGRAMADO ||
+                            horario.getEstado() == Horario.EstadoHorario.EN_MARCHA);
+                });
     }
 
     public List<Horario> obtenerHorariosPorRuta(String rutaId) {

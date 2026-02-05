@@ -1,6 +1,7 @@
 package com.david.trenes.service;
 
 import com.david.trenes.model.Tren;
+import com.david.trenes.repository.TrenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,27 +17,268 @@ import java.util.UUID;
 public class TrenDataService {
 
     private final TrenService trenService;
+    private final TrenRepository trenRepository;
 
     public void crearTrenesDeEjemplo() {
         log.info("Creando trenes de ejemplo para enriquecer el sistema");
-        
-        // Crear tren de pasajeros con 8 vagones incluyendo restaurante
-        crearTrenPasajeros("EXP-001", "PAS-2024-001", "Alvia", "Talgo", 2020, 250, 0.0, 280);
-        
-        // Crear tren de mercancías con 8 vagones
-        crearTrenMercancias("MER-001", "MER-2024-001", "Mercancías", "Siemens Vectron", 2019, 0, 1200.0, 120);
-        
-        // Crear tren regional con 8 vagones
-        crearTrenRegional("REG-001", "REG-2024-001", "Regional", "Stadler KISS", 2021, 180, 0.0, 160);
-        
-        // Crear tren de alta velocidad con 10 vagones
-        crearTrenAltaVelocidad("AVE-001", "AVE-2024-001", "Alta Velocidad", "Renfe AVE", 2022, 300, 0.0, 350);
-        
-        log.info("Trenes de ejemplo creados exitosamente");
+
+        // Mantengo estos dos por si usas rutas CARGA/REGIONAL
+        crearSiNoExiste(
+                () -> crearTrenMercancias("MER-001", "MER-2024-001", "Mercancias", "Siemens Vectron", 2019, 0, 1200.0, 120),
+                "MER-001", "MER-2024-001"
+        );
+
+        crearSiNoExiste(
+                () -> crearTrenRegional("REG-001", "REG-2024-001", "Regional", "Stadler KISS", 2021, 180, 0.0, 160),
+                "REG-001", "REG-2024-001"
+        );
+
+        // 6 trenes de ALTA_VELOCIDAD
+        for (int i = 1; i <= 6; i++) {
+            String numero = String.format("AVE-%03d", i);
+            String matricula = String.format("AVE-2024-%03d", i);
+
+            crearSiNoExiste(
+                    () -> crearTrenAltaVelocidad(numero, matricula, "Alta Velocidad", "Renfe AVE", 2022, 300, 0.0, 350),
+                    numero, matricula
+            );
+        }
+
+        // 6 trenes TURISTICOS
+        for (int i = 1; i <= 6; i++) {
+            String numero = String.format("TUR-%03d", i);
+            String matricula = String.format("TUR-2024-%03d", i);
+
+            crearSiNoExiste(
+                    () -> crearTrenTuristico(numero, matricula, "Turistico", "Talgo", 2018, 220, 0.0, 160),
+                    numero, matricula
+            );
+        }
+
+        // 2 trenes ESPECIALES
+        for (int i = 1; i <= 2; i++) {
+            String numero = String.format("ESP-%03d", i);
+            String matricula = String.format("ESP-2024-%03d", i);
+
+            crearSiNoExiste(
+                    () -> crearTrenEspecial(numero, matricula, "Especial", "CAF", 2017, 180, 0.0, 140),
+                    numero, matricula
+            );
+        }
+
+        log.info("Trenes de ejemplo creados/verificados exitosamente");
     }
 
-    private void crearTrenPasajeros(String numeroTren, String matricula, String modelo, String fabricante, 
-                                  Integer añoFabricacion, Integer capacidadPasajeros, Double capacidadCarga, 
+    private void crearSiNoExiste(Runnable creator, String numeroTren, String matricula) {
+        boolean existe = trenRepository.existsByNumeroTren(numeroTren) || trenRepository.existsByMatricula(matricula);
+        if (existe) {
+            log.info("Saltando creación: ya existe un tren con numeroTren={} o matricula={}", numeroTren, matricula);
+            return;
+        }
+        creator.run();
+    }
+
+    private void crearTrenTuristico(String numeroTren, String matricula, String modelo, String fabricante,
+                                    Integer añoFabricacion, Integer capacidadPasajeros, Double capacidadCarga,
+                                    Integer velocidadMaxima) {
+
+        List<Tren.Locomotora> locomotoras = new ArrayList<>();
+        locomotoras.add(Tren.Locomotora.builder()
+                .id(UUID.randomUUID().toString())
+                .matricula("LOC-" + matricula)
+                .modelo(modelo + " Loco")
+                .potencia(3500)
+                .tipoCombustible("DIESEL")
+                .añoFabricacion(añoFabricacion)
+                .estado(Tren.EstadoLocomotora.OPERATIVA)
+                .kilometraje(65000.0)
+                .build());
+
+        List<Tren.Vagon> vagones = new ArrayList<>();
+
+        vagones.add(Tren.Vagon.builder()
+                .id(UUID.randomUUID().toString())
+                .numero("V001")
+                .tipo(Tren.TipoVagon.RESTAURANTE)
+                .capacidad(40.0)
+                .capacidadPasajeros(40)
+                .capacidadCarga(0.0)
+                .activo(true)
+                .observaciones("Vagón restaurante turístico")
+                .build());
+
+        vagones.add(Tren.Vagon.builder()
+                .id(UUID.randomUUID().toString())
+                .numero("V002")
+                .tipo(Tren.TipoVagon.CAFETERIA)
+                .capacidad(25.0)
+                .capacidadPasajeros(25)
+                .capacidadCarga(0.0)
+                .activo(true)
+                .observaciones("Vagón cafetería turístico")
+                .build());
+
+        for (int i = 3; i <= 8; i++) {
+            vagones.add(Tren.Vagon.builder()
+                    .id(UUID.randomUUID().toString())
+                    .numero(String.format("V%03d", i))
+                    .tipo(Tren.TipoVagon.PASAJEROS_TURISTA)
+                    .capacidad(55.0)
+                    .capacidadPasajeros(55)
+                    .capacidadCarga(0.0)
+                    .activo(true)
+                    .observaciones("Vagón turista")
+                    .build());
+        }
+
+        Tren.CaracteristicasTren caracteristicas = Tren.CaracteristicasTren.builder()
+                .aireAcondicionado(true)
+                .wifi(true)
+                .accesibilidad(true)
+                .restaurante(true)
+                .cafeteria(true)
+                .banos(true)
+                .sistemaAudio(true)
+                .pantallas(true)
+                .numeroPuertas(14)
+                .sistemaFrenos("NEUMÁTICO")
+                .sistemaSenalizacion("ASFA")
+                .build();
+
+        Tren tren = Tren.builder()
+                .id(UUID.randomUUID().toString())
+                .numeroTren(numeroTren)
+                .matricula(matricula)
+                .tipoTren(Tren.TipoTren.TURISTICO)
+                .modelo(modelo)
+                .fabricante(fabricante)
+                .añoFabricacion(añoFabricacion)
+                .capacidadPasajeros(capacidadPasajeros)
+                .capacidadCarga(capacidadCarga)
+                .velocidadMaxima(velocidadMaxima)
+                .locomotoras(locomotoras)
+                .vagones(vagones)
+                .estadoActual(Tren.EstadoTren.DETENIDO)
+                .velocidadCruceroKmh(120.0)
+                .fechaUltimaRevision(LocalDateTime.now().minusMonths(2))
+                .proximaRevision(LocalDateTime.now().plusMonths(10))
+                .kilometrajeTotal(65000.0)
+                .kilometrosUltimaRevision(61000.0)
+                .mantenimientos(new ArrayList<>())
+                .incidencias(new ArrayList<>())
+                .caracteristicas(caracteristicas)
+                .activo(true)
+                .fechaCreacion(LocalDateTime.now())
+                .fechaActualizacion(LocalDateTime.now())
+                .build();
+
+        trenService.save(tren);
+        log.info("Tren turístico creado: {}", numeroTren);
+    }
+
+    private void crearTrenEspecial(String numeroTren, String matricula, String modelo, String fabricante,
+                                   Integer añoFabricacion, Integer capacidadPasajeros, Double capacidadCarga,
+                                   Integer velocidadMaxima) {
+
+        List<Tren.Locomotora> locomotoras = new ArrayList<>();
+        locomotoras.add(Tren.Locomotora.builder()
+                .id(UUID.randomUUID().toString())
+                .matricula("LOC-" + matricula)
+                .modelo(modelo + " Loco")
+                .potencia(3000)
+                .tipoCombustible("DIESEL")
+                .añoFabricacion(añoFabricacion)
+                .estado(Tren.EstadoLocomotora.OPERATIVA)
+                .kilometraje(90000.0)
+                .build());
+
+        List<Tren.Vagon> vagones = new ArrayList<>();
+
+        for (int i = 1; i <= 2; i++) {
+            vagones.add(Tren.Vagon.builder()
+                    .id(UUID.randomUUID().toString())
+                    .numero(String.format("V%03d", i))
+                    .tipo(Tren.TipoVagon.PASAJEROS_PRIMERA)
+                    .capacidad(35.0)
+                    .capacidadPasajeros(35)
+                    .capacidadCarga(0.0)
+                    .activo(true)
+                    .observaciones("Vagón primera - tren especial")
+                    .build());
+        }
+
+        for (int i = 3; i <= 7; i++) {
+            vagones.add(Tren.Vagon.builder()
+                    .id(UUID.randomUUID().toString())
+                    .numero(String.format("V%03d", i))
+                    .tipo(Tren.TipoVagon.PASAJEROS_TURISTA)
+                    .capacidad(55.0)
+                    .capacidadPasajeros(55)
+                    .capacidadCarga(0.0)
+                    .activo(true)
+                    .observaciones("Vagón turista - tren especial")
+                    .build());
+        }
+
+        vagones.add(Tren.Vagon.builder()
+                .id(UUID.randomUUID().toString())
+                .numero("V008")
+                .tipo(Tren.TipoVagon.CAFETERIA)
+                .capacidad(20.0)
+                .capacidadPasajeros(20)
+                .capacidadCarga(0.0)
+                .activo(true)
+                .observaciones("Cafetería - tren especial")
+                .build());
+
+        Tren.CaracteristicasTren caracteristicas = Tren.CaracteristicasTren.builder()
+                .aireAcondicionado(true)
+                .wifi(true)
+                .accesibilidad(true)
+                .restaurante(false)
+                .cafeteria(true)
+                .banos(true)
+                .sistemaAudio(true)
+                .pantallas(true)
+                .numeroPuertas(12)
+                .sistemaFrenos("NEUMÁTICO")
+                .sistemaSenalizacion("ASFA")
+                .build();
+
+        Tren tren = Tren.builder()
+                .id(UUID.randomUUID().toString())
+                .numeroTren(numeroTren)
+                .matricula(matricula)
+                .tipoTren(Tren.TipoTren.ESPECIAL)
+                .modelo(modelo)
+                .fabricante(fabricante)
+                .añoFabricacion(añoFabricacion)
+                .capacidadPasajeros(capacidadPasajeros)
+                .capacidadCarga(capacidadCarga)
+                .velocidadMaxima(velocidadMaxima)
+                .locomotoras(locomotoras)
+                .vagones(vagones)
+                .estadoActual(Tren.EstadoTren.DETENIDO)
+                .velocidadCruceroKmh(110.0)
+                .fechaUltimaRevision(LocalDateTime.now().minusMonths(3))
+                .proximaRevision(LocalDateTime.now().plusMonths(9))
+                .kilometrajeTotal(90000.0)
+                .kilometrosUltimaRevision(86000.0)
+                .mantenimientos(new ArrayList<>())
+                .incidencias(new ArrayList<>())
+                .caracteristicas(caracteristicas)
+                .activo(true)
+                .fechaCreacion(LocalDateTime.now())
+                .fechaActualizacion(LocalDateTime.now())
+                .build();
+
+        trenService.save(tren);
+        log.info("Tren especial creado: {}", numeroTren);
+    }
+
+
+    private void crearTrenPasajeros(String numeroTren, String matricula, String modelo, String fabricante,
+                                  Integer añoFabricacion, Integer capacidadPasajeros, Double capacidadCarga,
                                   Integer velocidadMaxima) {
         List<Tren.Locomotora> locomotoras = new ArrayList<>();
         locomotoras.add(Tren.Locomotora.builder()
@@ -51,7 +293,7 @@ public class TrenDataService {
                 .build());
 
         List<Tren.Vagon> vagones = new ArrayList<>();
-        
+
         // 2 vagones de primera clase
         for (int i = 1; i <= 2; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -65,7 +307,7 @@ public class TrenDataService {
                     .observaciones("Vagón primera clase con asientos reclinables")
                     .build());
         }
-        
+
         // 1 vagón restaurante
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -77,7 +319,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón restaurante con servicio completo")
                 .build());
-        
+
         // 1 vagón cafetería
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -89,7 +331,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón cafetería con snacks y bebidas")
                 .build());
-        
+
         // 4 vagones de clase turista
         for (int i = 5; i <= 8; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -165,7 +407,7 @@ public class TrenDataService {
                 .build());
 
         List<Tren.Vagon> vagones = new ArrayList<>();
-        
+
         // 4 vagones de carga cerrada
         for (int i = 1; i <= 4; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -179,7 +421,7 @@ public class TrenDataService {
                     .observaciones("Vagón cerrado para mercancías secas")
                     .build());
         }
-        
+
         // 2 vagones cisterna
         for (int i = 5; i <= 6; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -193,7 +435,7 @@ public class TrenDataService {
                     .observaciones("Vagón cisterna para líquidos")
                     .build());
         }
-        
+
         // 2 vagones de carga abierta
         for (int i = 7; i <= 8; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -269,7 +511,7 @@ public class TrenDataService {
                 .build());
 
         List<Tren.Vagon> vagones = new ArrayList<>();
-        
+
         // 1 vagón de primera clase
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -281,7 +523,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón primera clase regional")
                 .build());
-        
+
         // 1 vagón cafetería
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -293,7 +535,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón cafetería regional")
                 .build());
-        
+
         // 6 vagones de clase turista
         for (int i = 3; i <= 8; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -369,7 +611,7 @@ public class TrenDataService {
                 .build());
 
         List<Tren.Vagon> vagones = new ArrayList<>();
-        
+
         // 3 vagones de primera clase
         for (int i = 1; i <= 3; i++) {
             vagones.add(Tren.Vagon.builder()
@@ -383,7 +625,7 @@ public class TrenDataService {
                     .observaciones("Vagón primera clase alta velocidad")
                     .build());
         }
-        
+
         // 1 vagón restaurante
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -395,7 +637,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón restaurante alta velocidad")
                 .build());
-        
+
         // 1 vagón cafetería
         vagones.add(Tren.Vagon.builder()
                 .id(UUID.randomUUID().toString())
@@ -407,7 +649,7 @@ public class TrenDataService {
                 .activo(true)
                 .observaciones("Vagón cafetería alta velocidad")
                 .build());
-        
+
         // 5 vagones de clase turista
         for (int i = 6; i <= 10; i++) {
             vagones.add(Tren.Vagon.builder()
