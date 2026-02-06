@@ -105,7 +105,7 @@ public class BilleteController {
 
     @GetMapping("/pasajero/{pasajeroId}")
     public ResponseEntity<List<BilleteResumenResponse>> billetesDePasajero(@PathVariable String pasajeroId) {
-        ValidationUtil.validarMongoId(pasajeroId, "pasajeroId");
+        ValidationUtil.validarUuid(pasajeroId, "pasajeroId");
         List<Billete> billetes = billeteService.findBilletesDePasajeroDelUsuarioActual(pasajeroId);
 
         List<BilleteResumenResponse> response = billetes.stream()
@@ -128,7 +128,7 @@ public class BilleteController {
 
     @PostMapping("/{billeteId}/cancelar")
     public ResponseEntity<CompraBilleteResponse> cancelar(@PathVariable String billeteId) {
-        ValidationUtil.validarMongoId(billeteId, "billeteId");
+        ValidationUtil.validarUuid(billeteId, "billeteId");
         log.info("Cancelación billete: {}", billeteId);
 
         Billete billete = billeteService.cancelarDelUsuarioActual(billeteId);
@@ -144,8 +144,10 @@ public class BilleteController {
 
     @GetMapping("/disponibilidad")
     public ResponseEntity<DisponibilidadBilleteResponse> disponibilidad(@RequestParam String horarioId) {
-        ValidationUtil.validarMongoId(horarioId, "horarioId");
-        log.info("Disponibilidad billetes: horarioId={}", horarioId);
-        return ResponseEntity.ok(billeteService.getDisponibilidad(horarioId));
+        ValidationUtil.validarUuid(horarioId, "horarioId");
+        String horarioIdTrim = horarioId.trim();
+
+        log.info("Disponibilidad billetes: horarioId={}", horarioIdTrim);
+        return ResponseEntity.ok(billeteService.getDisponibilidad(horarioIdTrim));
     }
 }

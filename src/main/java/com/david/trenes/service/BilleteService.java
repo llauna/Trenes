@@ -3,16 +3,18 @@ package com.david.trenes.service;
 import com.david.trenes.dto.DisponibilidadBilleteResponse;
 import com.david.trenes.model.Billete;
 import com.david.trenes.model.Horario;
+import com.david.trenes.model.InventarioHorario;
 import com.david.trenes.model.Tren;
 import com.david.trenes.repository.BilleteRepository;
 import com.david.trenes.repository.HorarioRepository;
 import com.david.trenes.repository.PasajeroRepository;
 import com.david.trenes.repository.TrenRepository;
 import com.david.trenes.security.CurrentUserService;
+import com.david.trenes.service.InventarioHorarioService.Clase;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -30,35 +32,13 @@ public class BilleteService {
     private final TrenRepository trenRepository;
     private final PasajeroRepository pasajeroRepository;
     private final CurrentUserService currentUserService;
+    private final InventarioHorarioService inventarioHorarioService;
 
-    private void recalcularOcupacion(String horarioId, int capacidadEfectiva) {
-        long vendidos = billeteRepository.countByHorarioIdAndEstado(horarioId, Billete.EstadoBillete.COMPRADO);
-
-        Horario horario = horarioRepository.findById(horarioId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Horario no encontrado"));
-
-        horario.setPasajerosActuales((int) vendidos);
-        if (capacidadEfectiva > 0) {
-            horario.setOcupacionPorcentaje(((double) vendidos / (double) capacidadEfectiva) * 100.0);
-        } else {
-            horario.setOcupacionPorcentaje(0.0);
-        }
-        horario.setFechaActualizacion(LocalDateTime.now());
-        horarioRepository.save(horario);
-    }
-
-    private int calcularCapacidadEfectiva(Horario horario, Tren tren) {
-        Integer capTren = (tren == null) ? null : tren.getCapacidadPasajeros();
-        Integer capHorario = (horario == null) ? null : horario.getCapacidadPasajeros();
-
-        if (capTren == null && capHorario == null) return 0;
-        if (capTren == null) return Math.max(0, capHorario);
-        if (capHorario == null) return Math.max(0, capTren);
-        return Math.max(0, Math.min(capTren, capHorario));
-    }
-
-    public List<Billete> comprarVarios(String horarioId, List<String> pasajeroIds,
-                                       String origenId, String destinoId, String clase)  {
+    public List<Billete> comprarVarios(String horarioId,
+                                       List<String> pasajeroIds,
+                                       String origenId,
+                                       String destinoId,
+                                       String clase) {
 
         String usuarioId = currentUserService.getCurrentUsuarioId();
 
@@ -78,6 +58,9 @@ public class BilleteService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debes indicar al menos un pasajero");
         }
 
+        String claseNorm = normalizarClase(clase);
+        Clase claseEnum = "PRIMERA".equals(claseNorm) ? Clase.PRIMERA : Clase.TURISTA;
+
         List<String> pasajeroIdsNorm = pasajeroIds.stream()
                 .map(id -> id == null ? null : id.trim())
                 .toList();
@@ -86,11 +69,11 @@ public class BilleteService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pasajeroIds no puede contener valores nulos o vacíos");
         }
 
-        List<String> pasajeroIdsUnicos = pasajeroIdsNorm.stream()
-                .distinct()
-                .toList();
+        // Permitimos duplicados (un pasajero puede comprar más de un billete para el mismo horario)
+        // pero validamos permisos una sola vez por pasajeroId distinto.
+        List<String> pasajeroIdsParaPermisos = pasajeroIdsNorm.stream().distinct().toList();
 
-        for (String pasajeroId : pasajeroIdsUnicos) {
+        for (String pasajeroId : pasajeroIdsParaPermisos) {
             if (!pasajeroRepository.existsByIdAndUsuarioId(pasajeroId, usuarioId)) {
                 throw new ResponseStatusException(
                         HttpStatus.FORBIDDEN,
@@ -114,24 +97,25 @@ public class BilleteService {
         Tren tren = trenRepository.findById(horario.getTrenId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tren no encontrado"));
 
-        int capEfectiva = calcularCapacidadEfectiva(horario, tren);
+        // 1) Inicializa inventario (capacidad por clase ligada a vagones)
+        inventarioHorarioService.ensureInventario(horario, tren);
 
-        long vendidos = billeteRepository.countByHorarioIdAndEstado(horarioId, Billete.EstadoBillete.COMPRADO);
-        int q = pasajeroIdsUnicos.size();
+        int q = pasajeroIdsNorm.size();
 
-        if (vendidos + q > capEfectiva) {
+        // 2) Venta atómica: evita sobreventa
+        boolean ok = inventarioHorarioService.intentarVender(horarioId, claseEnum, q);
+        if (!ok) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "No hay plazas disponibles. Capacidad=" + capEfectiva + ", vendidos=" + vendidos
+                    "No hay plazas disponibles en clase " + claseNorm + " para este horario"
             );
         }
 
+        // 3) Crear billetes (1 billete = 1 asiento)
         double tarifaBase = (horario.getTarifa() == null) ? 0.0 : horario.getTarifa();
         double precioUnitario = tarifaBase;
 
-        String claseNorm = clase.trim();
-
-        List<Billete> billetes = pasajeroIdsUnicos.stream().map(pasajeroId ->
+        List<Billete> billetes = pasajeroIdsNorm.stream().map(pasajeroId ->
                 Billete.builder()
                         .codigoBillete("BIL-" + UUID.randomUUID())
                         .horarioId(horarioId)
@@ -147,10 +131,15 @@ public class BilleteService {
                         .build()
         ).toList();
 
-        List<Billete> guardados = billeteRepository.saveAll(billetes);
-
-        recalcularOcupacion(horarioId, capEfectiva);
-        return guardados;
+        try {
+            List<Billete> guardados = billeteRepository.saveAll(billetes);
+            recalcularOcupacionDesdeInventario(horarioId);
+            return guardados;
+        } catch (RuntimeException e) {
+            // compensación best-effort: devolvemos plazas al inventario si falló guardar billetes
+            inventarioHorarioService.compensarVenta(horarioId, claseEnum, q);
+            throw e;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -197,17 +186,18 @@ public class BilleteService {
         Tren tren = trenRepository.findById(horario.getTrenId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tren no encontrado"));
 
-        int capEfectiva = calcularCapacidadEfectiva(horario, tren);
-        long vendidos = billeteRepository.countByHorarioIdAndEstado(horarioId, Billete.EstadoBillete.COMPRADO);
-        int disponibles = Math.max(0, capEfectiva - (int) vendidos);
+        InventarioHorario inv = inventarioHorarioService.ensureInventario(horario, tren);
 
-        double ocupacion = (capEfectiva > 0) ? ((double) vendidos / (double) capEfectiva) * 100.0 : 0.0;
+        int capacidadTotal = Math.max(0, nvl(inv.getCapacidadTurista()) + nvl(inv.getCapacidadPrimera()));
+        int vendidosTotal = Math.max(0, nvl(inv.getVendidosTurista()) + nvl(inv.getVendidosPrimera()));
+        int disponibles = Math.max(0, capacidadTotal - vendidosTotal);
+        double ocupacion = (capacidadTotal > 0) ? ((double) vendidosTotal / (double) capacidadTotal) * 100.0 : 0.0;
 
         return DisponibilidadBilleteResponse.builder()
                 .horarioId(horarioId)
                 .trenId(horario.getTrenId())
-                .capacidadEfectiva(capEfectiva)
-                .vendidos((int) vendidos)
+                .capacidadEfectiva(capacidadTotal)
+                .vendidos(vendidosTotal)
                 .disponibles(disponibles)
                 .ocupacionPorcentaje(ocupacion)
                 .build();
@@ -223,26 +213,53 @@ public class BilleteService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tienes permisos para cancelar este billete");
         }
 
+        if (billete.getEstado() == Billete.EstadoBillete.CANCELADO) {
+            return billete;
+        }
+
         billete.setEstado(Billete.EstadoBillete.CANCELADO);
         billete.setFechaActualizacion(LocalDateTime.now());
         Billete actualizado = billeteRepository.save(billete);
 
-        Horario horario = horarioRepository.findById(billete.getHorarioId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Horario no encontrado"));
+        String claseNorm = normalizarClase(billete.getClase());
+        Clase claseEnum = "PRIMERA".equals(claseNorm) ? Clase.PRIMERA : Clase.TURISTA;
 
-        if (horario.getTrenId() == null || horario.getTrenId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Horario inválido: falta trenId (dato inconsistente en el sistema)"
-            );
-        }
-
-        Tren tren = trenRepository.findById(horario.getTrenId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tren no encontrado"));
-
-        recalcularOcupacion(horario.getId(), calcularCapacidadEfectiva(horario, tren));
+        inventarioHorarioService.compensarVenta(billete.getHorarioId(), claseEnum, 1);
+        recalcularOcupacionDesdeInventario(billete.getHorarioId());
 
         return actualizado;
+    }
+
+    private void recalcularOcupacionDesdeInventario(String horarioId) {
+        InventarioHorario inv = inventarioHorarioService.getInventarioOrThrow(horarioId);
+
+        int capacidadTotal = Math.max(0, nvl(inv.getCapacidadTurista()) + nvl(inv.getCapacidadPrimera()));
+        int vendidosTotal = Math.max(0, nvl(inv.getVendidosTurista()) + nvl(inv.getVendidosPrimera()));
+
+        Horario horario = horarioRepository.findById(horarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Horario no encontrado"));
+
+        horario.setPasajerosActuales(vendidosTotal);
+        horario.setOcupacionPorcentaje(capacidadTotal > 0 ? ((double) vendidosTotal / (double) capacidadTotal) * 100.0 : 0.0);
+        horario.setFechaActualizacion(LocalDateTime.now());
+        horarioRepository.save(horario);
+    }
+
+    private static int nvl(Integer v) {
+        return v == null ? 0 : v;
+    }
+
+    private String normalizarClase(String clase) {
+        if (clase == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clase es obligatoria");
+        }
+
+        String c = clase.trim().toUpperCase();
+
+        if (c.equals("PRIMERA") || c.equals("PRIMERA CLASE") || c.equals("1A") || c.equals("1")) return "PRIMERA";
+        if (c.equals("TURISTA") || c.equals("2A") || c.equals("2")) return "TURISTA";
+
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "clase inválida. Usa TURISTA o PRIMERA");
     }
 
     private void validarParadas(Horario horario, String origenId, String destinoId) {
@@ -273,5 +290,4 @@ public class BilleteService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No se puede vender billete: el destino no está después del origen en las paradas del horario");
         }
     }
-
 }
