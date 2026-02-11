@@ -430,6 +430,10 @@ public class GestionHorariosService {
         return horarioService.findByTrenId(trenId);
     }
 
+    public List<Horario> obtenerHorariosActivosPorTren(String trenId) {
+        return horarioService.findByTrenIdActivos(trenId);
+    }
+
     public List<Horario> obtenerHorariosPorEstado(Horario.EstadoHorario estado) {
         return horarioService.findByEstado(estado);
     }

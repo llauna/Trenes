@@ -11,6 +11,8 @@ import com.david.trenes.repository.PasajeroRepository;
 import com.david.trenes.repository.TrenRepository;
 import com.david.trenes.security.CurrentUserService;
 import com.david.trenes.service.InventarioHorarioService.Clase;
+import com.david.trenes.exception.NoHayPlazasException;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,9 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +39,23 @@ public class BilleteService {
                                        String origenId,
                                        String destinoId,
                                        String clase) {
+        return comprarVariosInternal(horarioId, pasajeroIds, origenId, destinoId, clase, false);
+    }
+
+    public List<Billete> comprarVariosMasivo(String horarioId,
+                                             List<String> pasajeroIds,
+                                             String origenId,
+                                             String destinoId,
+                                             String clase) {
+        return comprarVariosInternal(horarioId, pasajeroIds, origenId, destinoId, clase, true);
+    }
+
+    private List<Billete> comprarVariosInternal(String horarioId,
+                                                List<String> pasajeroIds,
+                                                String origenId,
+                                                String destinoId,
+                                                String clase,
+                                                boolean permitirAmpliacionMasiva) {
 
         String usuarioId = currentUserService.getCurrentUsuarioId();
 
@@ -69,8 +86,6 @@ public class BilleteService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pasajeroIds no puede contener valores nulos o vacíos");
         }
 
-        // Permitimos duplicados (un pasajero puede comprar más de un billete para el mismo horario)
-        // pero validamos permisos una sola vez por pasajeroId distinto.
         List<String> pasajeroIdsParaPermisos = pasajeroIdsNorm.stream().distinct().toList();
 
         for (String pasajeroId : pasajeroIdsParaPermisos) {
@@ -97,21 +112,30 @@ public class BilleteService {
         Tren tren = trenRepository.findById(horario.getTrenId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tren no encontrado"));
 
-        // 1) Inicializa inventario (capacidad por clase ligada a vagones)
         inventarioHorarioService.ensureInventario(horario, tren);
 
         int q = pasajeroIdsNorm.size();
 
-        // 2) Venta atómica: evita sobreventa
         boolean ok = inventarioHorarioService.intentarVender(horarioId, claseEnum, q);
+
+        // Solo en MASIVA: si no hay plazas, se permite añadir como máximo 1 vagón y reintentar.
+        if (!ok && permitirAmpliacionMasiva) {
+            boolean ampliado = intentarAmpliarCapacidadConMaximoUnVagon(horario, tren, claseEnum);
+            if (ampliado) {
+                ok = inventarioHorarioService.intentarVender(horarioId, claseEnum, q);
+            }
+        }
+
         if (!ok) {
+            String sugerencia = sugerirProximoServicioMismoOrigenDestino(horario, origenId, destinoId);
+
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "No hay plazas disponibles en clase " + claseNorm + " para este horario"
+                    "No hay plazas disponibles en clase " + claseNorm + " para este horario."
+                            + (sugerencia.isBlank() ? "" : " " + sugerencia)
             );
         }
 
-        // 3) Crear billetes (1 billete = 1 asiento)
         double tarifaBase = (horario.getTarifa() == null) ? 0.0 : horario.getTarifa();
         double precioUnitario = tarifaBase;
 
@@ -131,15 +155,128 @@ public class BilleteService {
                         .build()
         ).toList();
 
+        if (!ok) {
+            // En compra normal: 409 estructurado con sugerencia de próximo tren (mismo origen/destino)
+            if (!permitirAmpliacionMasiva) {
+                Optional<Horario> next = buscarProximoMismoOrigenDestino(horario, origenId, destinoId);
+
+                String msg = "No hay plazas disponibles en clase " + claseNorm + " para este horario.";
+                if (next.isPresent()) {
+                    msg = msg + " Siguiente servicio (mismo origen/destino): " + next.get().getCodigoServicio()
+                            + " (sale " + next.get().getFechaSalida() + ").";
+                }
+
+                throw new NoHayPlazasException(
+                        msg,
+                        claseNorm,
+                        horario.getId(),
+                        next.map(Horario::getId).orElse(null),
+                        next.map(Horario::getCodigoServicio).orElse(null),
+                        next.map(Horario::getFechaSalida).orElse(null)
+                );
+            }
+
+            // En masiva (o en otros casos): mantenemos el 409 estándar
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No hay plazas disponibles en clase " + claseNorm + " para este horario"
+            );
+        }
+
         try {
             List<Billete> guardados = billeteRepository.saveAll(billetes);
             recalcularOcupacionDesdeInventario(horarioId);
             return guardados;
         } catch (RuntimeException e) {
-            // compensación best-effort: devolvemos plazas al inventario si falló guardar billetes
             inventarioHorarioService.compensarVenta(horarioId, claseEnum, q);
             throw e;
         }
+    }
+
+    private Optional<Horario> buscarProximoMismoOrigenDestino(Horario horarioActual, String origenId, String destinoId) {
+        if (horarioActual == null || horarioActual.getFechaSalida() == null) return Optional.empty();
+        if (origenId == null || origenId.isBlank() || destinoId == null || destinoId.isBlank()) return Optional.empty();
+
+        return horarioRepository
+                .findFirstByEstacionOrigenIdAndEstacionDestinoIdAndActivoTrueAndFechaSalidaAfterOrderByFechaSalidaAsc(
+                        origenId,
+                        destinoId,
+                        horarioActual.getFechaSalida()
+                );
+    }
+
+
+    private String sugerirProximoServicioMismoOrigenDestino(Horario horarioActual, String origenId, String destinoId) {
+        if (origenId == null || origenId.isBlank() || destinoId == null || destinoId.isBlank()) return "";
+        if (horarioActual == null || horarioActual.getFechaSalida() == null) return "";
+
+        LocalDateTime salida = horarioActual.getFechaSalida();
+
+        Optional<Horario> proximo = horarioRepository
+                .findFirstByEstacionOrigenIdAndEstacionDestinoIdAndActivoTrueAndFechaSalidaAfterOrderByFechaSalidaAsc(
+                        origenId,
+                        destinoId,
+                        salida
+                );
+
+        return proximo
+                .map(h -> "Siguiente servicio (mismo origen/destino): " + h.getCodigoServicio()
+                        + " (sale " + h.getFechaSalida() + ").")
+                .orElse("");
+    }
+
+    private boolean intentarAmpliarCapacidadConMaximoUnVagon(Horario horario, Tren tren, Clase clase) {
+        final int CAP_VAGON_TURISTA = 60;
+        final int CAP_VAGON_PRIMERA = 40;
+
+        int capPorVagon = (clase == Clase.PRIMERA) ? CAP_VAGON_PRIMERA : CAP_VAGON_TURISTA;
+
+        if (tren.getVagones() == null) {
+            tren.setVagones(new ArrayList<>());
+        }
+
+        Tren.Vagon nuevo = Tren.Vagon.builder()
+                .id(UUID.randomUUID().toString())
+                .numero("AUTO-" + (tren.getVagones().size() + 1))
+                .tipo(clase == Clase.PRIMERA ? Tren.TipoVagon.PASAJEROS_PRIMERA : Tren.TipoVagon.PASAJEROS_TURISTA)
+                .capacidadPasajeros(capPorVagon)
+                .activo(true)
+                .observaciones("Vagón añadido automáticamente por falta de plazas (solo compra masiva, máx 1 vagón)")
+                .build();
+
+        tren.getVagones().add(nuevo);
+        tren.setCapacidadPasajeros(nvl(tren.getCapacidadPasajeros()) + capPorVagon);
+        tren.setFechaActualizacion(LocalDateTime.now());
+        trenRepository.save(tren);
+
+        inventarioHorarioService.incrementarCapacidad(horario.getId(), clase, capPorVagon);
+
+        // Reflejar en Horario para UI/consultas
+        InventarioHorario inv2 = inventarioHorarioService.getInventarioOrThrow(horario.getId());
+        int capacidadTotal = Math.max(0, nvl(inv2.getCapacidadTurista()) + nvl(inv2.getCapacidadPrimera()));
+        horario.setCapacidadPasajeros(capacidadTotal);
+        horario.setFechaActualizacion(LocalDateTime.now());
+        horarioRepository.save(horario);
+
+        return true;
+    }
+
+    private String sugerirProximoServicio(Horario horarioActual) {
+        if (horarioActual.getRutaId() == null || horarioActual.getRutaId().isBlank()) return "";
+
+        LocalDateTime salida = horarioActual.getFechaSalida();
+        if (salida == null) return "";
+
+        Optional<Horario> proximo = horarioRepository
+                .findFirstByRutaIdAndActivoTrueAndFechaSalidaAfterOrderByFechaSalidaAsc(
+                        horarioActual.getRutaId(),
+                        salida
+                );
+
+        return proximo
+                .map(h -> "Siguiente servicio disponible: " + h.getCodigoServicio()
+                        + " (sale " + h.getFechaSalida() + ").")
+                .orElse("");
     }
 
     @Transactional(readOnly = true)

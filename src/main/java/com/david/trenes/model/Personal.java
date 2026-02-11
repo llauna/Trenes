@@ -12,8 +12,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Document(collection = "pasajeros")
-public class Pasajero {
+@Document(collection = "personal")
+public class Personal {
 
     @Id
     private String id;
@@ -29,7 +29,7 @@ public class Pasajero {
 
     @Indexed(unique = true)
     @Field("documento")
-    private String documento; // DNI/NIE/Pasaporte (sin validaciones estrictas por ahora)
+    private String documento; // DNI/NIE/Pasaporte
 
     @Indexed(unique = true)
     @Field("email")
@@ -39,12 +39,33 @@ public class Pasajero {
     @Field("telefono")
     private String telefono;
 
+    @Field("tipo_personal")
+    private TipoPersonal tipoPersonal; // CONDUCTOR, CABINA, RESTAURANTE
+
+    @Field("numero_empleado")
+    private String numeroEmpleado; // Número único de empleado
+
+    @Field("licencia_conducir")
+    private String licenciaConducir; // Solo para conductores
+
+    @Field("especialidad")
+    private String especialidad; // Para personal de cabina/restaurant
+
     @Field("activo")
     private Boolean activo;
+
+    @Field("fecha_contratacion")
+    private LocalDateTime fechaContratacion;
 
     @Field("fecha_creacion")
     private LocalDateTime fechaCreacion;
 
     @Field("fecha_actualizacion")
     private LocalDateTime fechaActualizacion;
+
+    public enum TipoPersonal {
+        CONDUCTOR,
+        CABINA,
+        RESTAURANTE
+    }
 }

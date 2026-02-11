@@ -72,6 +72,12 @@ public class Tren {
     @Field("conductor_actual_id")
     private String conductorActualId;
 
+    @Field("personal_cabina_ids")
+    private List<String> personalCabinaIds;
+
+    @Field("personal_restaurante_ids")
+    private List<String> personalRestauranteIds;
+
     @Field("estacion_actual_id")
     private String estacionActualId;
 

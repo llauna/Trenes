@@ -41,6 +41,8 @@ public interface ViaRepository extends MongoRepository<Via, String> {
     @Query("{'activo': true, 'estado': {$ne: 'DESACTIVADA'}}")
     List<Via> findViasActivas();
     
+    List<Via> findByActivo(Boolean activo);
+    
     @Query("{'señales': {$in: ?0}}")
     List<Via> findBySeñalId(List<String> señalIds);
     

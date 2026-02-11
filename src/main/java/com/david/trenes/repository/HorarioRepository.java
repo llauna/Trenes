@@ -11,13 +11,15 @@ import java.util.Optional;
 
 @Repository
 public interface HorarioRepository extends MongoRepository<Horario, String> {
-    
+
     Optional<Horario> findByCodigoServicio(String codigoServicio);
-    
+
     List<Horario> findByNumeroServicio(String numeroServicio);
-    
+
     List<Horario> findByTrenId(String trenId);
-    
+
+    List<Horario> findByTrenIdAndActivoTrue(String trenId);
+
     List<Horario> findByRutaId(String rutaId);
     
     List<Horario> findByConductorId(String conductorId);
@@ -27,9 +29,9 @@ public interface HorarioRepository extends MongoRepository<Horario, String> {
     List<Horario> findByEstado(Horario.EstadoHorario estado);
     
     List<Horario> findByActivoTrue();
-    
+
     List<Horario> findByEstacionOrigenIdAndEstacionDestinoId(String estacionOrigenId, String estacionDestinoId);
-    
+
     @Query("{'fechaSalida': {$gte: ?0, $lte: ?1}}")
     List<Horario> findByFechaSalidaBetween(LocalDateTime fechaInicio, LocalDateTime fechaFin);
     
@@ -105,4 +107,16 @@ public interface HorarioRepository extends MongoRepository<Horario, String> {
     
     @Query("{'tarifa': {$avg: 1}}")
     Double avgTarifa();
+
+    Optional<Horario> findFirstByRutaIdAndActivoTrueAndFechaSalidaAfterOrderByFechaSalidaAsc(
+            String rutaId,
+            LocalDateTime fechaSalida
+    );
+
+    Optional<Horario> findFirstByEstacionOrigenIdAndEstacionDestinoIdAndActivoTrueAndFechaSalidaAfterOrderByFechaSalidaAsc(
+            String estacionOrigenId,
+            String estacionDestinoId,
+            LocalDateTime fechaSalida
+    );
+
 }

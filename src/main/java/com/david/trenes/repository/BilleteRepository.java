@@ -16,4 +16,10 @@ public interface BilleteRepository extends MongoRepository<Billete, String> {
     List<Billete> findByPasajeroId(String pasajeroId);
 
     List<Billete> findByPasajeroIdIn(List<String> pasajeroIds);
+
+    boolean existsByPasajeroId(String pasajeroId);
+
+    long countByPasajeroIdIn(List<String> pasajeroIds);
+
+    long countByPasajeroIdInAndEstado(List<String> pasajeroIds, Billete.EstadoBillete estado);
 }

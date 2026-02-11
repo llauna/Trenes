@@ -1,6 +1,7 @@
 package com.david.trenes.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import com.david.trenes.dto.ApiErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,29 +20,6 @@ import java.util.Map;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
-        ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-
-        log.warn("Validation error: {}", errors);
-        
-        ErrorResponse errorResponse = ErrorResponse.builder()
-                .timestamp(LocalDateTime.now())
-                .status(HttpStatus.BAD_REQUEST.value())
-                .error("Validation failed")
-                .message("Request validation failed")
-                .validationErrors(errors)
-                .path(getCurrentPath())
-                .build();
-
-        return ResponseEntity.badRequest().body(errorResponse);
-    }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException ex) {
@@ -136,6 +114,50 @@ public class GlobalExceptionHandler {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    @ExceptionHandler(NoHayPlazasException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoHayPlazas(NoHayPlazasException ex) {
+        log.warn("NoHayPlazasException: {}", ex.getMessage());
+
+        ApiErrorResponse.ApiErrorResponseBuilder body = ApiErrorResponse.builder()
+                .status(HttpStatus.CONFLICT.value())
+                .code("NO_HAY_PLAZAS")
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now());
+
+        if (ex.getNextHorarioId() != null && !ex.getNextHorarioId().isBlank()) {
+            body.next(ApiErrorResponse.NextHorarioSuggestion.builder()
+                    .horarioId(ex.getNextHorarioId())
+                    .codigoServicio(ex.getNextCodigoServicio())
+                    .fechaSalida(ex.getNextFechaSalida())
+                    .build());
+        }
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body.build());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getAllErrors().forEach((error) -> {
+            String fieldName = ((FieldError) error).getField();
+            String errorMessage = error.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
+        });
+
+        log.warn("Validation error: {}", errors);
+
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Validation failed")
+                .message("Request validation failed")
+                .validationErrors(errors)
+                .path(getCurrentPath())
+                .build();
+
+        return ResponseEntity.badRequest().body(errorResponse);
     }
 
     @lombok.Data

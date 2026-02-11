@@ -21,6 +21,8 @@ public interface TrenRepository extends MongoRepository<Tren, String> {
     
     List<Tren> findByActivoTrue();
     
+    List<Tren> findByActivo(Boolean activo);
+    
     List<Tren> findByViaActualId(String viaActualId);
     
     List<Tren> findByRutaActualId(String rutaActualId);

@@ -96,6 +96,22 @@ public class InventarioHorarioService {
         );
     }
 
+    public void incrementarCapacidad(String horarioId, Clase clase, int delta) {
+        if (delta <= 0) return;
+
+        String capacidadField = (clase == Clase.PRIMERA) ? "capacidad_primera" : "capacidad_turista";
+
+        Update update = new Update()
+                .inc(capacidadField, delta)
+                .set("fecha_actualizacion", LocalDateTime.now());
+
+        mongoTemplate.updateFirst(
+                new BasicQuery(new Document("_id", horarioId)),
+                update,
+                InventarioHorario.class
+        );
+    }
+
     public InventarioHorario getInventarioOrThrow(String horarioId) {
         return inventarioHorarioRepository.findById(horarioId)
                 .orElseThrow(() -> new ResponseStatusException(CONFLICT, "Inventario no inicializado para este horario"));

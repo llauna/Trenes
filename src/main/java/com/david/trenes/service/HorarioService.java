@@ -44,6 +44,11 @@ public class HorarioService {
         log.debug("Buscando horarios del tren: {}", trenId);
         return horarioRepository.findByTrenId(trenId);
     }
+
+    public List<Horario> findByTrenIdActivos(String trenId) {
+        log.debug("Buscando horarios activos del tren: {}", trenId);
+        return horarioRepository.findByTrenIdAndActivoTrue(trenId);
+    }
     
     public List<Horario> findByRutaId(String rutaId) {
         log.debug("Buscando horarios de la ruta: {}", rutaId);

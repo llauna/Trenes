@@ -2,6 +2,7 @@ package com.david.trenes.controller;
 
 import com.david.trenes.model.Via;
 import com.david.trenes.service.ViaService;
+import com.david.trenes.service.ViaSeedService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ import java.util.List;
 public class ViaController {
     
     private final ViaService viaService;
+    private final ViaSeedService viaSeedService;
     
     @GetMapping
     public ResponseEntity<List<Via>> findAll() {
@@ -205,5 +207,34 @@ public class ViaController {
         log.info("Verificando si existe vía con código: {}", codigoVia);
         boolean exists = viaService.existsByCodigoVia(codigoVia);
         return ResponseEntity.ok(exists);
+    }
+    
+    @PostMapping("/seed")
+    public ResponseEntity<List<Via>> generarViasEstacion(@RequestParam(defaultValue = "20") int cantidad) {
+        log.info("Generando {} vías de estación automáticamente", cantidad);
+        try {
+            List<Via> viasGeneradas = viaSeedService.generarViasEstacion(cantidad);
+            return ResponseEntity.status(HttpStatus.CREATED).body(viasGeneradas);
+        } catch (Exception e) {
+            log.error("Error al generar vías de estación", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @PostMapping("/seed/estacion/{estacionId}")
+    public ResponseEntity<List<Via>> generarViasParaEstacion(
+            @PathVariable String estacionId,
+            @RequestParam(defaultValue = "8") int andenes,
+            @RequestParam(defaultValue = "4") int viasMuertas,
+            @RequestParam(defaultValue = "2") int desvios) {
+        log.info("Generando vías para estación {}: {} andenes, {} vías muertas, {} desvíos", 
+                estacionId, andenes, viasMuertas, desvios);
+        try {
+            List<Via> viasGeneradas = viaSeedService.generarViasParaEstacion(estacionId, andenes, viasMuertas, desvios);
+            return ResponseEntity.status(HttpStatus.CREATED).body(viasGeneradas);
+        } catch (Exception e) {
+            log.error("Error al generar vías para estación " + estacionId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }

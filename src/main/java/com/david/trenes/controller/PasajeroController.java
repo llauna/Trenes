@@ -1,5 +1,7 @@
 package com.david.trenes.controller;
 
+import com.david.trenes.dto.SeedPasajeroItem;
+import com.david.trenes.dto.SeedPasajerosResponse;
 import com.david.trenes.model.Pasajero;
 import com.david.trenes.security.CurrentUserService;
 import com.david.trenes.service.PasajeroService;
@@ -51,4 +53,31 @@ public class PasajeroController {
         pasajeroService.delete(usuarioId, pasajeroId);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/seed")
+    public ResponseEntity<SeedPasajerosResponse> seed(@RequestParam(defaultValue = "50") int count) {
+        String usuarioId = currentUserService.getCurrentUsuarioId();
+        log.info("Seed pasajeros aleatorios: usuarioId={}, count={}", usuarioId, count);
+
+        List<Pasajero> creados = pasajeroService.seedAleatorios(usuarioId, count);
+
+        List<SeedPasajeroItem> items = creados.stream()
+                .map(p -> SeedPasajeroItem.builder()
+                        .pasajeroId(p.getId())
+                        .nombre(p.getNombre())
+                        .apellidos(p.getApellidos())
+                        .documento(p.getDocumento())
+                        .email(p.getEmail())
+                        .telefono(p.getTelefono())
+                        .build())
+                .toList();
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                SeedPasajerosResponse.builder()
+                        .creados(items.size())
+                        .pasajeros(items)
+                        .build()
+        );
+    }
+
 }

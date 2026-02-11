@@ -12,4 +12,10 @@ public interface PasajeroRepository extends MongoRepository<Pasajero, String> {
     List<Pasajero> findByUsuarioId(String usuarioId);
 
     boolean existsByIdAndUsuarioId(String id, String usuarioId);
+
+    boolean existsByDocumento(String documento);
+
+    boolean existsByEmail(String email);
+
+    boolean existsByTelefono(String telefono);
 }
