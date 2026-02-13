@@ -9,9 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -188,44 +186,110 @@ public class GestionHorariosService {
 
     private Horario crearHorario(Ruta ruta, Tren tren, LocalDateTime fechaSalida, LocalDateTime fechaLlegada, int numeroServicio) {
         log.info("Creando horario para ruta: {} con tren: {}", ruta.getCodigoRuta(), tren.getNumeroTren());
-        
+
         List<Ruta.ParadaRuta> estacionesIntermedias = ruta.getEstacionesIntermedias();
         if (estacionesIntermedias == null) {
             estacionesIntermedias = new ArrayList<>();
             log.warn("La ruta {} no tiene estaciones intermedias, creando lista vacía", ruta.getCodigoRuta());
         }
         log.info("Estaciones intermedias en ruta: {}", estacionesIntermedias.size());
-        
+
+        // 1) Normalizar paradas: ORIGEN + INTERMEDIAS + DESTINO, sin duplicados
+        String origenId = ruta.getEstacionOrigenId();
+        String destinoId = ruta.getEstacionDestinoId();
+
+        if (origenId == null || origenId.isBlank() || destinoId == null || destinoId.isBlank()) {
+            log.warn("Ruta {} inconsistente: estacionOrigenId/estacionDestinoId vacíos", ruta.getCodigoRuta());
+        }
+
+        Map<String, Ruta.ParadaRuta> paradasPorEstacion = new LinkedHashMap<>();
+
+        // ORIGEN (si existe)
+        if (origenId != null && !origenId.isBlank()) {
+            paradasPorEstacion.put(origenId, Ruta.ParadaRuta.builder()
+                    .estacionId(origenId)
+                    .nombreEstacion("Origen")
+                    .orden(1)
+                    .kilometro(0.0)
+                    .tiempoParadaMinutos(0)
+                    .obligatoria(true)
+                    .build());
+        }
+
+        // INTERMEDIAS (ordenadas, excluyendo origen/destino y evitando duplicados)
+        estacionesIntermedias.stream()
+                .filter(p -> p != null && p.getEstacionId() != null && !p.getEstacionId().isBlank())
+                .sorted(Comparator.comparing(p -> p.getOrden() == null ? Integer.MAX_VALUE : p.getOrden()))
+                .forEach(p -> {
+                    String estId = p.getEstacionId();
+                    if (estId.equals(origenId) || estId.equals(destinoId)) return;
+                    paradasPorEstacion.putIfAbsent(estId, p);
+                });
+
+        // DESTINO (si existe)
+        if (destinoId != null && !destinoId.isBlank()) {
+            paradasPorEstacion.put(destinoId, Ruta.ParadaRuta.builder()
+                    .estacionId(destinoId)
+                    .nombreEstacion("Destino")
+                    .orden(9999)
+                    .kilometro(ruta.getDistanciaTotalKm() == null ? 0.0 : ruta.getDistanciaTotalKm())
+                    .tiempoParadaMinutos(0)
+                    .obligatoria(true)
+                    .build());
+        }
+
+        List<Ruta.ParadaRuta> paradasRutaNormalizadas = new ArrayList<>(paradasPorEstacion.values());
+
+        // Reasignar orden 1..N
+        for (int i = 0; i < paradasRutaNormalizadas.size(); i++) {
+            Ruta.ParadaRuta p = paradasRutaNormalizadas.get(i);
+            p.setOrden(i + 1);
+        }
+
+        if (paradasRutaNormalizadas.size() >= 2) {
+            String firstId = paradasRutaNormalizadas.get(0).getEstacionId();
+            String lastId = paradasRutaNormalizadas.get(paradasRutaNormalizadas.size() - 1).getEstacionId();
+
+            if (!firstId.equals(origenId) || !lastId.equals(destinoId)) {
+                log.warn("Ruta {}: paradas normalizadas no cuadran con cabecera (origen={}, destino={}, first={}, last={})",
+                        ruta.getCodigoRuta(), origenId, destinoId, firstId, lastId);
+            }
+        }
+
+        // 2) Construir ParadaHorario con reglas correctas para primera/última
         List<Horario.ParadaHorario> paradasHorario = new ArrayList<>();
-        
-        // Crear paradas basadas en las paradas de la ruta
-        for (Ruta.ParadaRuta paradaRuta : estacionesIntermedias) {
-            log.info("Procesando parada: {} - {}", paradaRuta.getOrden(), paradaRuta.getNombreEstacion());
-            
-            LocalDateTime horaLlegadaParada = fechaSalida.plusMinutes(
-                (long) (paradaRuta.getKilometro() / ruta.getDistanciaTotalKm() * ruta.getTiempoEstimadoMinutos())
+
+        for (int i = 0; i < paradasRutaNormalizadas.size(); i++) {
+            Ruta.ParadaRuta paradaRuta = paradasRutaNormalizadas.get(i);
+
+            boolean esPrimera = (i == 0);
+            boolean esUltima = (i == paradasRutaNormalizadas.size() - 1);
+
+            LocalDateTime horaLlegadaParada = esPrimera ? null : fechaSalida.plusMinutes(
+                    (long) (paradaRuta.getKilometro() / ruta.getDistanciaTotalKm() * ruta.getTiempoEstimadoMinutos())
             );
-            LocalDateTime horaSalidaParada = horaLlegadaParada.plusMinutes(paradaRuta.getTiempoParadaMinutos());
-            
+
+            LocalDateTime horaSalidaParada = esUltima ? null : (horaLlegadaParada == null ? fechaSalida : horaLlegadaParada)
+                    .plusMinutes(paradaRuta.getTiempoParadaMinutos() == null ? 0 : paradaRuta.getTiempoParadaMinutos());
+
             Horario.ParadaHorario paradaHorario = Horario.ParadaHorario.builder()
                     .estacionId(paradaRuta.getEstacionId())
                     .nombreEstacion(paradaRuta.getNombreEstacion())
                     .orden(paradaRuta.getOrden())
-                    .horaLlegadaProgramada(paradaRuta.getOrden() == 1 ? null : horaLlegadaParada)
-                    .horaSalidaProgramada(paradaRuta.getOrden() == estacionesIntermedias.size() ? null : horaSalidaParada)
+                    .horaLlegadaProgramada(horaLlegadaParada)
+                    .horaSalidaProgramada(horaSalidaParada)
                     .tiempoParadaMinutos(paradaRuta.getTiempoParadaMinutos())
                     .paradaObligatoria(paradaRuta.getObligatoria())
-                    .andenAsignado(null) // Se asignará dinámicamente
+                    .andenAsignado(null)
                     .estado(Horario.EstadoParada.PENDIENTE)
                     .retrasoMinutos(0)
                     .build();
-            
+
             paradasHorario.add(paradaHorario);
         }
 
-        log.info("Paradas creadas: {}", paradasHorario.size());
+        log.info("Paradas creadas (normalizadas): {}", paradasHorario.size());
 
-        // Crear clases de servicio según el tipo de tren
         List<Horario.ClaseServicio> clases = crearClasesServicio(tren);
         log.info("Clases creadas: {}", clases.size());
 
@@ -238,13 +302,13 @@ public class GestionHorariosService {
                 .tipoServicio(obtenerTipoServicio(ruta.getTipoRuta()))
                 .fechaSalida(fechaSalida)
                 .fechaLlegada(fechaLlegada)
-                .estacionOrigenId(ruta.getEstacionOrigenId())
-                .estacionDestinoId(ruta.getEstacionDestinoId())
+                .estacionOrigenId(origenId)
+                .estacionDestinoId(destinoId)
                 .paradas(paradasHorario)
-                .conductorId(null) // Se asignará dinámicamente
+                .conductorId(null)
                 .conductorSuplenteId(null)
                 .estado(Horario.EstadoHorario.PROGRAMADO)
-                .frecuencia(null) // No se usa en horarios individuales
+                .frecuencia(null)
                 .capacidadPasajeros(tren.getCapacidadPasajeros())
                 .pasajerosActuales(0)
                 .ocupacionPorcentaje(0.0)
@@ -453,5 +517,159 @@ public class GestionHorariosService {
             log.error("Error al actualizar estado del horario: {}", horarioId, e);
             return false;
         }
+    }
+
+    public Map<String, Object> verificarConsistenciaParadasConRuta() {
+        log.info("Iniciando verificación de consistencia entre paradas de horarios y rutas");
+        
+        Map<String, Object> resultado = new HashMap<>();
+        List<Map<String, Object>> inconsistencias = new ArrayList<>();
+        int horariosVerificados = 0;
+        int horariosConsistentes = 0;
+        
+        List<Horario> todosHorarios = horarioService.findAll();
+        
+        for (Horario horario : todosHorarios) {
+            horariosVerificados++;
+            
+            Map<String, Object> verificacionHorario = verificarConsistenciaHorarioRuta(horario);
+            
+            Boolean esConsistente = (Boolean) verificacionHorario.get("consistente");
+            if (esConsistente) {
+                horariosConsistentes++;
+            } else {
+                inconsistencias.add(verificacionHorario);
+            }
+        }
+        
+        resultado.put("horariosVerificados", horariosVerificados);
+        resultado.put("horariosConsistentes", horariosConsistentes);
+        resultado.put("horariosInconsistentes", horariosVerificados - horariosConsistentes);
+        resultado.put("inconsistencias", inconsistencias);
+        resultado.put("porcentajeConsistencia", horariosVerificados > 0 ? 
+            (double) horariosConsistentes / horariosVerificados * 100 : 0.0);
+        
+        log.info("Verificación completada: {}/{} horarios consistentes ({:.2f}%)", 
+            horariosConsistentes, horariosVerificados, 
+            horariosVerificados > 0 ? (double) horariosConsistentes / horariosVerificados * 100 : 0.0);
+        
+        return resultado;
+    }
+    
+    private Map<String, Object> verificarConsistenciaHorarioRuta(Horario horario) {
+        Map<String, Object> resultado = new HashMap<>();
+        resultado.put("horarioId", horario.getId());
+        resultado.put("codigoServicio", horario.getCodigoServicio());
+        resultado.put("rutaId", horario.getRutaId());
+        
+        Optional<Ruta> rutaOpt = rutaService.findById(horario.getRutaId());
+        if (rutaOpt.isEmpty()) {
+            resultado.put("consistente", false);
+            resultado.put("error", "Ruta no encontrada");
+            return resultado;
+        }
+        
+        Ruta ruta = rutaOpt.get();
+        List<String> problemas = new ArrayList<>();
+        
+        // 1. Verificar origen y destino
+        if (!horario.getEstacionOrigenId().equals(ruta.getEstacionOrigenId())) {
+            problemas.add(String.format("Origen mismatch: horario=%s, ruta=%s", 
+                horario.getEstacionOrigenId(), ruta.getEstacionOrigenId()));
+        }
+        
+        if (!horario.getEstacionDestinoId().equals(ruta.getEstacionDestinoId())) {
+            problemas.add(String.format("Destino mismatch: horario=%s, ruta=%s", 
+                horario.getEstacionDestinoId(), ruta.getEstacionDestinoId()));
+        }
+        
+        // 2. Construir lista esperada de paradas de la ruta
+        List<String> paradasEsperadas = new ArrayList<>();
+        
+        // Origen
+        if (ruta.getEstacionOrigenId() != null) {
+            paradasEsperadas.add(ruta.getEstacionOrigenId());
+        }
+        
+        // Intermedias (ordenadas)
+        if (ruta.getEstacionesIntermedias() != null) {
+            ruta.getEstacionesIntermedias().stream()
+                .filter(p -> p != null && p.getEstacionId() != null)
+                .sorted(Comparator.comparing(p -> p.getOrden() == null ? Integer.MAX_VALUE : p.getOrden()))
+                .forEach(p -> {
+                    String estId = p.getEstacionId();
+                    if (!estId.equals(ruta.getEstacionOrigenId()) && 
+                        !estId.equals(ruta.getEstacionDestinoId())) {
+                        paradasEsperadas.add(estId);
+                    }
+                });
+        }
+        
+        // Destino
+        if (ruta.getEstacionDestinoId() != null) {
+            paradasEsperadas.add(ruta.getEstacionDestinoId());
+        }
+        
+        // 3. Comparar con paradas del horario
+        List<String> paradasHorario = new ArrayList<>();
+        if (horario.getParadas() != null) {
+            paradasHorario = horario.getParadas().stream()
+                .filter(p -> p != null && p.getEstacionId() != null)
+                .sorted(Comparator.comparing(p -> p.getOrden() == null ? Integer.MAX_VALUE : p.getOrden()))
+                .map(Horario.ParadaHorario::getEstacionId)
+                .toList();
+        }
+        
+        // 4. Verificar coincidencia exacta
+        if (!paradasEsperadas.equals(paradasHorario)) {
+            problemas.add(String.format("Paradas mismatch. Esperadas: %s, Encontradas: %s", 
+                paradasEsperadas, paradasHorario));
+        }
+        
+        // 5. Verificar orden y tiempos
+        if (horario.getParadas() != null && !horario.getParadas().isEmpty()) {
+            for (int i = 0; i < horario.getParadas().size(); i++) {
+                Horario.ParadaHorario parada = horario.getParadas().get(i);
+                
+                // Verificar orden consecutivo
+                if (!parada.getOrden().equals(i + 1)) {
+                    problemas.add(String.format("Orden incorrecto en parada %s: esperado=%d, actual=%d", 
+                        parada.getEstacionId(), i + 1, parada.getOrden()));
+                }
+                
+                // Verificar lógica de tiempos (primera no debe tener llegada, última no debe tener salida)
+                boolean esPrimera = (i == 0);
+                boolean esUltima = (i == horario.getParadas().size() - 1);
+                
+                if (esPrimera && parada.getHoraLlegadaProgramada() != null) {
+                    problemas.add(String.format("Primera parada %s no debe tener hora de llegada", 
+                        parada.getEstacionId()));
+                }
+                
+                if (esUltima && parada.getHoraSalidaProgramada() != null) {
+                    problemas.add(String.format("Última parada %s no debe tener hora de salida", 
+                        parada.getEstacionId()));
+                }
+                
+                // Verificar secuencia temporal
+                if (!esPrimera && i > 0) {
+                    Horario.ParadaHorario paradaAnterior = horario.getParadas().get(i - 1);
+                    if (paradaAnterior.getHoraSalidaProgramada() != null && 
+                        parada.getHoraLlegadaProgramada() != null) {
+                        if (parada.getHoraLlegadaProgramada().isBefore(paradaAnterior.getHoraSalidaProgramada())) {
+                            problemas.add(String.format("Inconsistencia temporal: %s llega antes de que %s salga", 
+                                parada.getEstacionId(), paradaAnterior.getEstacionId()));
+                        }
+                    }
+                }
+            }
+        }
+        
+        resultado.put("consistente", problemas.isEmpty());
+        resultado.put("problemas", problemas);
+        resultado.put("paradasEsperadas", paradasEsperadas);
+        resultado.put("paradasEncontradas", paradasHorario);
+        
+        return resultado;
     }
 }
