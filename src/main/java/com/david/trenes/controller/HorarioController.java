@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/horarios")
+@RequestMapping("/v1/horarios")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
@@ -105,8 +105,8 @@ public class HorarioController {
     
     @GetMapping("/salida-entre")
     public ResponseEntity<List<Horario>> findByFechaSalidaBetween(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
+            @RequestParam LocalDateTime fechaInicio,
+            @RequestParam LocalDateTime fechaFin) {
         log.info("Obteniendo horarios con salida entre {} y {}", fechaInicio, fechaFin);
         List<Horario> horarios = horarioService.findByFechaSalidaBetween(fechaInicio, fechaFin);
         return ResponseEntity.ok(horarios);
@@ -114,8 +114,8 @@ public class HorarioController {
     
     @GetMapping("/llegada-entre")
     public ResponseEntity<List<Horario>> findByFechaLlegadaBetween(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
+            @RequestParam LocalDateTime fechaInicio,
+            @RequestParam LocalDateTime fechaFin) {
         log.info("Obteniendo horarios con llegada entre {} y {}", fechaInicio, fechaFin);
         List<Horario> horarios = horarioService.findByFechaLlegadaBetween(fechaInicio, fechaFin);
         return ResponseEntity.ok(horarios);
@@ -123,7 +123,7 @@ public class HorarioController {
     
     @GetMapping("/salida-despues")
     public ResponseEntity<List<Horario>> findByFechaSalidaAfter(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fecha) {
+            @RequestParam LocalDateTime fecha) {
         log.info("Obteniendo horarios con salida después de: {}", fecha);
         List<Horario> horarios = horarioService.findByFechaSalidaAfter(fecha);
         return ResponseEntity.ok(horarios);
@@ -131,7 +131,7 @@ public class HorarioController {
     
     @GetMapping("/salida-antes")
     public ResponseEntity<List<Horario>> findByFechaSalidaBefore(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fecha) {
+            @RequestParam LocalDateTime fecha) {
         log.info("Obteniendo horarios con salida antes de: {}", fecha);
         List<Horario> horarios = horarioService.findByFechaSalidaBefore(fecha);
         return ResponseEntity.ok(horarios);
@@ -147,8 +147,8 @@ public class HorarioController {
     @GetMapping("/llegada-estacion-entre")
     public ResponseEntity<List<Horario>> findByLlegadaEstacionEntreFechas(
             @PathVariable String estacionId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaFin) {
+            @RequestParam LocalDateTime fechaInicio,
+            @RequestParam LocalDateTime fechaFin) {
         log.info("Obteniendo horarios con llegada a estación {} entre {} y {}", estacionId, fechaInicio, fechaFin);
         List<Horario> horarios = horarioService.findByLlegadaEstacionEntreFechas(estacionId, fechaInicio, fechaFin);
         return ResponseEntity.ok(horarios);

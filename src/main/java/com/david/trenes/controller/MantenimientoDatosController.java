@@ -6,6 +6,7 @@ import com.david.trenes.repository.HorarioRepository;
 import com.david.trenes.repository.InventarioHorarioRepository;
 import com.david.trenes.repository.TrenRepository;
 import com.david.trenes.service.GestionHorariosService;
+import com.david.trenes.util.DateUtils;
 
 import com.david.trenes.model.Tren;
 
@@ -18,7 +19,7 @@ import java.util.Map;
 import java.time.LocalDateTime;
 
 @RestController
-@RequestMapping("/api/v1/mantenimiento-datos")
+@RequestMapping("/v1/mantenimiento-datos")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
@@ -86,6 +87,29 @@ public class MantenimientoDatosController {
                 "inventarioEliminado", limpiarInventario ? inventarioAntes : 0
         ));
     }
+
+    @PostMapping("/horarios/{horarioId}/iniciar-servicio")
+    public ResponseEntity<Map<String, Object>> iniciarServicioPorHorario(
+            @PathVariable String horarioId,
+            @RequestParam(required = false) Double velocidadCruceroKmh,
+            @RequestParam(defaultValue = "false") boolean force,
+            @RequestParam(defaultValue = "false") boolean confirm
+    ) {
+        if (!confirm) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "ok", false,
+                    "message", "Operación de estado. Repite con confirm=true"
+            ));
+        }
+
+        Map<String, Object> resultado = gestionHorariosService.iniciarServicioPorHorario(horarioId, velocidadCruceroKmh, force);
+
+        return ResponseEntity.ok(Map.of(
+                "ok", true,
+                "resultado", resultado
+        ));
+    }
+
 
     @PatchMapping("/trenes/estado")
     public ResponseEntity<Map<String, Object>> cambiarEstadoTrenes(
@@ -173,20 +197,102 @@ public class MantenimientoDatosController {
                 "inventarioDespues", inventarioDespues
         ));
     }
-@GetMapping("/verificar-consistencia-paradas")
+    @GetMapping("/verificar-consistencia-paradas")
     public ResponseEntity<Map<String, Object>> verificarConsistenciaParadas() {
         log.info("Iniciando verificación de consistencia de paradas con rutas");
-        
+
         Map<String, Object> resultado = gestionHorariosService.verificarConsistenciaParadasConRuta();
-        
-        log.info("Verificación completada: {}/{} horarios consistentes ({:.2f}%)", 
-            resultado.get("horariosConsistentes"), 
-            resultado.get("horariosVerificados"),
-            (Double) resultado.get("porcentajeConsistencia"));
-        
+
+        log.info("Verificación completada: {}/{} horarios consistentes ({}%)",
+                resultado.get("horariosConsistentes"),
+                resultado.get("horariosVerificados"),
+                resultado.get("porcentajeConsistencia"));
+
         return ResponseEntity.ok(Map.of(
                 "ok", true,
                 "resultado", resultado
         ));
     }
+
+    @GetMapping("/monitorizar-trenes-tiempo-real")
+    @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"}, methods = {RequestMethod.GET})
+    public ResponseEntity<Map<String, Object>> monitorizarTrenesTiempoReal() {
+        log.info("Iniciando monitorización en tiempo real de trenes");
+        
+        Map<String, Object> resultado = gestionHorariosService.monitorizarEstadoTrenesTiempoReal();
+        
+        log.info("Monitorización completada: {} trenes totales, {} en marcha, {} incidentes", 
+            resultado.get("totalTrenes"), 
+            resultado.get("trenesEnMarcha"), 
+            resultado.get("incidentesDetectados"));
+        
+        return ResponseEntity.ok()
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .body(Map.of(
+                "ok", true,
+                "resultado", resultado
+        ));
+    }
+
+    @GetMapping("/horarios/candidatos-inicio")
+    public ResponseEntity<Map<String, Object>> obtenerCandidatosInicioHorarios(
+            @RequestParam(defaultValue = "2") int minutosAntes,
+            @RequestParam(defaultValue = "10") int minutosDespues,
+            @RequestParam(defaultValue = "50") int max,
+            @RequestParam(defaultValue = "true") boolean incluirRetrasados
+    ) {
+        Map<String, Object> resultado = gestionHorariosService.obtenerCandidatosInicioHorarios(
+                minutosAntes, minutosDespues, max, incluirRetrasados
+        );
+
+        return ResponseEntity.ok(Map.of(
+                "ok", true,
+                "resultado", resultado
+        ));
+    }
+
+    @RequestMapping(value = "/monitorizar-trenes-tiempo-real", method = RequestMethod.OPTIONS)
+    @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
+    public ResponseEntity<Void> handleOptions() {
+        return ResponseEntity.ok()
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .build();
+    }
+
+    @GetMapping("/test-simple")
+    public ResponseEntity<Map<String, Object>> testSimple() {
+        return ResponseEntity.ok(Map.of(
+            "ok", true,
+            "message", "Test endpoint working",
+            "timestamp", LocalDateTime.now()
+        ));
+    }
+
+    @GetMapping("/test-formato-fecha")
+    public ResponseEntity<Map<String, Object>> testFormatoFecha(
+            @RequestParam(required = false) LocalDateTime fecha) {
+        
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("ok", true);
+        response.put("message", "Test de formato de fecha");
+        
+        if (fecha != null) {
+            response.put("fechaRecibida", fecha);
+            response.put("fechaFormateadaSpanish", DateUtils.formatSpanishDate(fecha));
+            response.put("fechaFormateadaSpanishDateTime", DateUtils.formatSpanishDateTime(fecha));
+            response.put("fechaFormateadaISO", DateUtils.formatISODateTime(fecha));
+        } else {
+            response.put("fechaActual", LocalDateTime.now());
+            response.put("fechaActualSpanish", DateUtils.formatSpanishDate(LocalDateTime.now()));
+            response.put("ejemploFormato", "Usa: ?fecha=27/02/2026 o ?fecha=27/02/2026 14:30:00 o ?fecha=2026-02-27T14:30:00");
+        }
+        
+        return ResponseEntity.ok(response);
+    }
+
+
 }

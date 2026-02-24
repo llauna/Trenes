@@ -20,6 +20,10 @@ public class PasajeroService {
 
     private final PasajeroRepository pasajeroRepository;
 
+
+    public List<Pasajero> findAll() {
+        return pasajeroRepository.findAll();
+    }
     public List<Pasajero> findByUsuario(String usuarioId) {
         return pasajeroRepository.findByUsuarioId(usuarioId);
     }

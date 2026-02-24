@@ -3,6 +3,7 @@ package com.david.trenes.controller;
 import com.david.trenes.model.Via;
 import com.david.trenes.service.ViaService;
 import com.david.trenes.service.ViaSeedService;
+import com.david.trenes.util.DateUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/vias")
+@RequestMapping("/v1/vias")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
@@ -80,12 +81,17 @@ public class ViaController {
         List<Via> vias = viaService.findViasElectrificadas();
         return ResponseEntity.ok(vias);
     }
-    
+
     @GetMapping("/mantenimiento")
     public ResponseEntity<List<Via>> findViasRequierenMantenimiento(
-            @RequestParam(defaultValue = "#{T(java.time.LocalDateTime).now().plusDays(7)}") LocalDateTime fecha) {
-        log.info("Obteniendo vías que requieren mantenimiento antes de: {}", fecha);
-        List<Via> vias = viaService.findViasRequierenMantenimiento(fecha);
+            @RequestParam(required = false) String fecha
+    ) {
+        LocalDateTime fechaConsulta = (fecha != null)
+                ? DateUtils.parseFlexibleDateTimeParam(fecha)
+                : LocalDateTime.now().plusDays(7);
+
+        log.info("Obteniendo vías que requieren mantenimiento antes de: {}", fechaConsulta);
+        List<Via> vias = viaService.findViasRequierenMantenimiento(fechaConsulta);
         return ResponseEntity.ok(vias);
     }
     
@@ -159,19 +165,22 @@ public class ViaController {
             })
             .orElse(ResponseEntity.notFound().build());
     }
-    
+
     @PatchMapping("/{id}/programar-mantenimiento")
     public ResponseEntity<Via> programarMantenimiento(
-            @PathVariable String id, 
-            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) LocalDateTime fechaMantenimiento) {
-        log.info("Programando mantenimiento para vía {} en: {}", id, fechaMantenimiento);
-        
+            @PathVariable String id,
+            @RequestParam String fechaMantenimiento
+    ) {
+        LocalDateTime fecha = DateUtils.parseFlexibleDateTimeParam(fechaMantenimiento);
+
+        log.info("Programando mantenimiento para vía {} en: {}", id, fecha);
+
         return viaService.findById(id)
-            .map(via -> {
-                Via viaActualizada = viaService.programarMantenimiento(id, fechaMantenimiento);
-                return ResponseEntity.ok(viaActualizada);
-            })
-            .orElse(ResponseEntity.notFound().build());
+                .map(via -> {
+                    Via viaActualizada = viaService.programarMantenimiento(id, fecha);
+                    return ResponseEntity.ok(viaActualizada);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
     
     @GetMapping("/estadisticas/total-longitud")

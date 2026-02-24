@@ -19,4 +19,7 @@ public class BilleteResumenResponse {
     private String estado;
     private Double precioTotal;
     private LocalDateTime fechaCompra;
+
+    private Integer vagonNumero;
+    private Integer asientoNumero;
 }

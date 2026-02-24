@@ -1,5 +1,6 @@
 package com.david.trenes.controller;
 
+import com.david.trenes.dto.BilleteResumenResponse;
 import com.david.trenes.model.Billete;
 import com.david.trenes.service.BilleteService;
 import lombok.RequiredArgsConstructor;
@@ -7,10 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/billetes-count")
+@RequestMapping("/v1/billetes-count")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
@@ -36,6 +38,36 @@ public class BilleteCountController {
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Error: " + e.getMessage()));
         }
+    }
+
+    @GetMapping("/mis")
+    public ResponseEntity<List<BilleteResumenResponse>> misBilletes() {
+        List<Billete> billetes = billeteService.findBilletesDelUsuarioActual();
+
+        List<BilleteResumenResponse> response = billetes.stream()
+                .map(b -> BilleteResumenResponse.builder()
+                        .billeteId(b.getId())
+                        .codigoBillete(b.getCodigoBillete())
+                        .horarioId(b.getHorarioId())
+                        .pasajeroId(b.getPasajeroId())
+                        .estacionOrigenId(b.getEstacionOrigenId())
+                        .estacionDestinoId(b.getEstacionDestinoId())
+                        .clase(b.getClase())
+                        .estado(b.getEstado() != null ? b.getEstado().name() : null)
+                        .precioTotal(b.getPrecioTotal())
+                        .fechaCompra(b.getFechaCompra())
+                        .vagonNumero(b.getVagonNumero())
+                        .asientoNumero(b.getAsientoNumero())
+                        .build())
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/mis/detalle")
+    public ResponseEntity<List<Billete>> misBilletesDetalle() {
+
+        return ResponseEntity.ok(billeteService.findBilletesDelUsuarioActual());
     }
 
     @GetMapping("/info")

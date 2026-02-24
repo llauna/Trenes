@@ -189,6 +189,10 @@ public class RutaService {
         return rutaRepository.countByActivoTrue();
     }
     
+    public long count() {
+        return rutaRepository.count();
+    }
+    
     public Double sumDistanciaTotal() {
         return rutaRepository.sumDistanciaTotal();
     }

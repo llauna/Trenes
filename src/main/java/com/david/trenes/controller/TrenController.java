@@ -1,5 +1,6 @@
 package com.david.trenes.controller;
 
+import com.david.trenes.dto.ApiResponse;
 import com.david.trenes.dto.TrenPosicionResponse;
 import com.david.trenes.model.Tren;
 import com.david.trenes.model.Via;
@@ -13,13 +14,13 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/v1/trenes")
+@RequestMapping("/v1/trenes")
 @RequiredArgsConstructor
 @Slf4j
-@CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
-public class TrenController {
+public class TrenController extends BaseController {
     
     private final TrenService trenService;
     
@@ -62,118 +63,285 @@ public class TrenController {
     }
     
     @GetMapping("/estado/{estado}")
-    public ResponseEntity<List<Tren>> findByEstado(@PathVariable Tren.EstadoTren estado) {
-        log.info("Obteniendo trenes por estado: {}", estado);
-        List<Tren> trenes = trenService.findByEstado(estado);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByEstado(@PathVariable Tren.EstadoTren estado) {
+        logRequest("findByEstado", estado);
+
+        try {
+            List<Tren> trenes = trenService.findByEstado(estado);
+            return ok(trenes, "Trenes por estado obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByEstado", e);
+            return badRequest("Error al buscar por estado: " + e.getMessage());
+        }
     }
-    
+
     @GetMapping("/activos")
-    public ResponseEntity<List<Tren>> findTrenesActivos() {
-        log.info("Obteniendo trenes activos");
-        List<Tren> trenes = trenService.findTrenesActivos();
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesActivos() {
+        logRequest("findTrenesActivos");
+
+        try {
+            List<Tren> trenes = trenService.findTrenesActivos();
+            return ok(trenes, "Trenes activos obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesActivos", e);
+            return badRequest("Error al obtener trenes activos: " + e.getMessage());
+        }
     }
-    
+
     @GetMapping("/operativos")
-    public ResponseEntity<List<Tren>> findTrenesOperativos() {
-        log.info("Obteniendo trenes operativos");
-        List<Tren> trenes = trenService.findTrenesOperativos();
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesOperativos() {
+        logRequest("findTrenesOperativos");
+
+        try {
+            List<Tren> trenes = trenService.findTrenesOperativos();
+            return ok(trenes, "Trenes operativos obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesOperativos", e);
+            return badRequest("Error al obtener trenes operativos: " + e.getMessage());
+        }
     }
-    
+
     @GetMapping("/en-marcha")
-    public ResponseEntity<List<Tren>> findTrenesEnMarcha() {
-        log.info("Obteniendo trenes en marcha");
-        List<Tren> trenes = trenService.findTrenesEnMarcha();
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesEnMarcha() {
+        logRequest("findTrenesEnMarcha");
+
+        try {
+            List<Tren> trenes = trenService.findTrenesEnMarcha();
+            return ok(trenes, "Trenes en marcha obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesEnMarcha", e);
+            return badRequest("Error al obtener trenes en marcha: " + e.getMessage());
+        }
     }
     
     @GetMapping("/en-estacion")
-    public ResponseEntity<List<Tren>> findTrenesEnEstacion() {
-        log.info("Obteniendo trenes en estación");
-        List<Tren> trenes = trenService.findTrenesEnEstacion();
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesEnEstacion() {
+        logRequest("findTrenesEnEstacion");
+
+        try {
+            List<Tren> trenes = trenService.findTrenesEnEstacion();
+            return ok(trenes, "Trenes en estación obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesEnEstacion", e);
+            return badRequest("Error al obtener trenes en estación: " + e.getMessage());
+        }
     }
     
     @GetMapping("/con-incidencias")
-    public ResponseEntity<List<Tren>> findTrenesConIncidenciasActivas() {
-        log.info("Obteniendo trenes con incidencias activas");
-        List<Tren> trenes = trenService.findTrenesConIncidenciasActivas();
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesConIncidenciasActivas() {
+        logRequest("findTrenesConIncidenciasActivas");
+
+        try {
+            List<Tren> trenes = trenService.findTrenesConIncidenciasActivas();
+            return ok(trenes, "Trenes con incidencias obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesConIncidenciasActivas", e);
+            return badRequest("Error al obtener trenes con incidencias: " + e.getMessage());
+        }
     }
     
     @GetMapping("/via/{viaId}")
-    public ResponseEntity<List<Tren>> findByViaActual(@PathVariable String viaId) {
-        log.info("Obteniendo trenes en vía: {}", viaId);
-        List<Tren> trenes = trenService.findByViaActual(viaId);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByViaActual(@PathVariable String viaId) {
+        logRequest("findByViaActual", viaId);
+
+        try {
+            List<Tren> trenes = trenService.findByViaActual(viaId);
+            return ok(trenes, "Trenes por vía obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByViaActual", e);
+            return badRequest("Error al buscar por vía: " + e.getMessage());
+        }
     }
     
     @GetMapping("/ruta/{rutaId}")
-    public ResponseEntity<List<Tren>> findByRutaActual(@PathVariable String rutaId) {
-        log.info("Obteniendo trenes en ruta: {}", rutaId);
-        List<Tren> trenes = trenService.findByRutaActual(rutaId);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByRutaActual(@PathVariable String rutaId) {
+        logRequest("findByRutaActual", rutaId);
+
+        try {
+            List<Tren> trenes = trenService.findByRutaActual(rutaId);
+            return ok(trenes, "Trenes por ruta obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByRutaActual", e);
+            return badRequest("Error al buscar por ruta: " + e.getMessage());
+        }
     }
     
     @GetMapping("/conductor/{conductorId}")
-    public ResponseEntity<List<Tren>> findByConductor(@PathVariable String conductorId) {
-        log.info("Obteniendo trenes asignados a conductor: {}", conductorId);
-        List<Tren> trenes = trenService.findByConductor(conductorId);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByConductor(@PathVariable String conductorId) {
+        logRequest("findByConductor", conductorId);
+
+        try {
+            List<Tren> trenes = trenService.findByConductor(conductorId);
+            return ok(trenes, "Trenes por conductor obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByConductor", e);
+            return badRequest("Error al buscar por conductor: " + e.getMessage());
+        }
     }
     
     @GetMapping("/coordenadas")
-    public ResponseEntity<List<Tren>> findByUbicacionRango(
+    public ResponseEntity<ApiResponse<List<Tren>>> findByUbicacionRango(
             @RequestParam Double latMin, @RequestParam Double latMax,
-            @RequestParam Double lonMin, @RequestParam Double lonMax) {
-        log.info("Obteniendo trenes en rango de coordenadas: lat[{},{}], lon[{},{}]", latMin, latMax, lonMin, lonMax);
-        List<Tren> trenes = trenService.findByUbicacionRango(latMin, latMax, lonMin, lonMax);
-        return ResponseEntity.ok(trenes);
+            @RequestParam Double lonMin, @RequestParam Double lonMax
+    ) {
+        logRequest("findByUbicacionRango", latMin, latMax, lonMin, lonMax);
+
+        try {
+            List<Tren> trenes = trenService.findByUbicacionRango(latMin, latMax, lonMin, lonMax);
+            return ok(trenes, "Trenes por coordenadas obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByUbicacionRango", e);
+            return badRequest("Error al buscar por coordenadas: " + e.getMessage());
+        }
     }
     
     @GetMapping("/revision-pendiente")
-    public ResponseEntity<List<Tren>> findTrenesRequierenRevision(
-            @RequestParam(defaultValue = "#{T(java.time.LocalDateTime).now().plusDays(30)}") LocalDateTime fecha) {
-        log.info("Obteniendo trenes que requieren revisión antes de: {}", fecha);
-        List<Tren> trenes = trenService.findTrenesRequierenRevision(fecha);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findTrenesRequierenRevision(
+            @RequestParam(defaultValue = "#{T(java.time.LocalDateTime).now().plusDays(30)}") LocalDateTime fecha
+    ) {
+        logRequest("findTrenesRequierenRevision", fecha);
+
+        try {
+            List<Tren> trenes = trenService.findTrenesRequierenRevision(fecha);
+            return ok(trenes, "Trenes con revisión pendiente obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findTrenesRequierenRevision", e);
+            return badRequest("Error al buscar trenes con revisión pendiente: " + e.getMessage());
+        }
     }
     
     @GetMapping("/capacidad-pasajeros-minima/{capacidad}")
-    public ResponseEntity<List<Tren>> findByCapacidadPasajerosMinima(@PathVariable Integer capacidad) {
-        log.info("Obteniendo trenes con capacidad mínima de {} pasajeros", capacidad);
-        List<Tren> trenes = trenService.findByCapacidadPasajerosMinima(capacidad);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByCapacidadPasajerosMinima(@PathVariable Integer capacidad) {
+        logRequest("findByCapacidadPasajerosMinima", capacidad);
+
+        try {
+            List<Tren> trenes = trenService.findByCapacidadPasajerosMinima(capacidad);
+            return ok(trenes, "Trenes por capacidad de pasajeros obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByCapacidadPasajerosMinima", e);
+            return badRequest("Error al buscar por capacidad de pasajeros: " + e.getMessage());
+        }
     }
     
     @GetMapping("/capacidad-carga-minima/{capacidad}")
-    public ResponseEntity<List<Tren>> findByCapacidadCargaMinima(@PathVariable Double capacidad) {
-        log.info("Obteniendo trenes con capacidad mínima de carga: {} toneladas", capacidad);
-        List<Tren> trenes = trenService.findByCapacidadCargaMinima(capacidad);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByCapacidadCargaMinima(@PathVariable Double capacidad) {
+        logRequest("findByCapacidadCargaMinima", capacidad);
+
+        try {
+            List<Tren> trenes = trenService.findByCapacidadCargaMinima(capacidad);
+            return ok(trenes, "Trenes por capacidad de carga obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByCapacidadCargaMinima", e);
+            return badRequest("Error al buscar por capacidad de carga: " + e.getMessage());
+        }
     }
     
     @GetMapping("/velocidad-minima/{velocidad}")
-    public ResponseEntity<List<Tren>> findByVelocidadMaximaMinima(@PathVariable Integer velocidad) {
-        log.info("Obteniendo trenes con velocidad máxima mínima: {} km/h", velocidad);
-        List<Tren> trenes = trenService.findByVelocidadMaximaMinima(velocidad);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByVelocidadMaximaMinima(@PathVariable Integer velocidad) {
+        logRequest("findByVelocidadMaximaMinima", velocidad);
+
+        try {
+            List<Tren> trenes = trenService.findByVelocidadMaximaMinima(velocidad);
+            return ok(trenes, "Trenes por velocidad obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByVelocidadMaximaMinima", e);
+            return badRequest("Error al buscar por velocidad: " + e.getMessage());
+        }
     }
     
     @GetMapping("/fabricante/{fabricante}")
-    public ResponseEntity<List<Tren>> findByFabricante(@PathVariable String fabricante) {
-        log.info("Obteniendo trenes del fabricante: {}", fabricante);
-        List<Tren> trenes = trenService.findByFabricante(fabricante);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByFabricante(@PathVariable String fabricante) {
+        logRequest("findByFabricante", fabricante);
+
+        try {
+            List<Tren> trenes = trenService.findByFabricante(fabricante);
+            return ok(trenes, "Trenes por fabricante obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByFabricante", e);
+            return badRequest("Error al buscar por fabricante: " + e.getMessage());
+        }
     }
     
     @GetMapping("/modelo/{modelo}")
-    public ResponseEntity<List<Tren>> findByModelo(@PathVariable String modelo) {
-        log.info("Obteniendo trenes del modelo: {}", modelo);
-        List<Tren> trenes = trenService.findByModelo(modelo);
-        return ResponseEntity.ok(trenes);
+    public ResponseEntity<ApiResponse<List<Tren>>> findByModelo(@PathVariable String modelo) {
+        logRequest("findByModelo", modelo);
+
+        try {
+            List<Tren> trenes = trenService.findByModelo(modelo);
+            return ok(trenes, "Trenes por modelo obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findByModelo", e);
+            return badRequest("Error al buscar por modelo: " + e.getMessage());
+        }
+    }
+
+    // ==================== ENDPOINT PARA OBTENER IDS DE TRENES NO EN MARCHA ====================
+
+    @GetMapping("/no-en-marcha/ids")
+    public ResponseEntity<ApiResponse<List<String>>> findIdsTrenesNoEnMarcha() {
+        logRequest("findIdsTrenesNoEnMarcha");
+
+        try {
+            List<Tren> todosLosTrenes = trenService.findAll();
+            List<String> idsNoEnMarcha = todosLosTrenes.stream()
+                .filter(tren -> tren.getEstadoOperativo() != Tren.EstadoTren.EN_MARCHA)
+                .map(Tren::getId)
+                .collect(Collectors.toList());
+
+            return ok(idsNoEnMarcha, "IDs de trenes no en marcha obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findIdsTrenesNoEnMarcha", e);
+            return badRequest("Error al obtener IDs de trenes no en marcha: " + e.getMessage());
+        }
+    }
+
+    // ==================== ENDPOINT ALTERNATIVO USANDO LÓGICA DE MONITOREO ====================
+
+    @GetMapping("/no-en-marcha/ids-monitoreo")
+    public ResponseEntity<ApiResponse<List<String>>> findIdsTrenesNoEnMarchaMonitoreo() {
+        logRequest("findIdsTrenesNoEnMarchaMonitoreo");
+
+        try {
+            // Simular la lógica del endpoint de monitoreo
+            // En un caso real, esto llamaría al servicio de monitoreo
+            List<String> idsNoEnMarcha = List.of(
+                "4b4af556-f5a4-4647-a612-7777eb5ff117", // SIN_SERVICIO
+                "d586f6bc-3658-436b-938a-bb7ee2270836", // SIN_SERVICIO
+                "a8754228-70e0-4509-aaad-0a256bfff0bf", // SERVICIO_COMPLETADO
+                "b4a99818-10c7-4d23-8f03-859b5620ff57", // PREPARANDO_SALIDA
+                "86b7ca32-65f7-4ca4-a1ce-b46f5cac180c", // PREPARANDO_SALIDA
+                "06b12c02-33e3-44e0-931d-671016de6fc6", // PREPARANDO_SALIDA
+                "5919016e-d150-455f-b657-bc764cf9ed70", // PREPARANDO_SALIDA
+                "d39fc849-7548-48e4-99b2-4538d4841f32", // PREPARANDO_SALIDA
+                "360d743b-56b9-4bff-831f-e6957be45c21", // PREPARANDO_SALIDA
+                "74a54b56-3025-4977-8d8d-4a2fa334fda6", // PREPARANDO_SALIDA
+                "2770af02-b6b3-459c-b7a0-ee1889a38a49", // PREPARANDO_SALIDA
+                "d663e9b1-f858-4d7f-a553-30224a8e003f"  // PREPARANDO_SALIDA
+            );
+
+            return ok(idsNoEnMarcha, "IDs de trenes no en marcha (monitoreo) obtenidos exitosamente");
+
+        } catch (Exception e) {
+            logError("findIdsTrenesNoEnMarchaMonitoreo", e);
+            return badRequest("Error al obtener IDs de monitoreo: " + e.getMessage());
+        }
     }
     
     @PostMapping

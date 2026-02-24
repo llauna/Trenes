@@ -57,6 +57,9 @@ public class Tren {
     @Field("estado_actual")
     private EstadoTren estadoActual;
 
+    @Field("estado_operativo")
+    private EstadoTren estadoOperativo;
+
     @Field("ubicacion_actual")
     private Via.Coordenada ubicacionActual;
 

@@ -147,6 +147,10 @@ public class EstacionService {
         return estacionRepository.countActivas();
     }
     
+    public long count() {
+        return estacionRepository.count();
+    }
+    
     public long countAccesibles() {
         return estacionRepository.countAccesibles();
     }

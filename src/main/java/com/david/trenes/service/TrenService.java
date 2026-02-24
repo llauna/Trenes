@@ -198,6 +198,10 @@ public class TrenService {
         return trenRepository.countByActivoTrue();
     }
     
+    public long count() {
+        return trenRepository.count();
+    }
+    
     public Double sumKilometrajeTotal() {
         return trenRepository.sumKilometrajeTotal();
     }

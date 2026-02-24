@@ -50,6 +50,12 @@ public class Billete {
     @Field("fecha_actualizacion")
     private LocalDateTime fechaActualizacion;
 
+    @Field("vagon_numero")
+    private Integer vagonNumero;
+
+    @Field("asiento_numero")
+    private Integer asientoNumero;
+
     public enum EstadoBillete {
         COMPRADO,
         CANCELADO,

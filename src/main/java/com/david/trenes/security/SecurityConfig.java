@@ -3,17 +3,20 @@ package com.david.trenes.security;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import org.springframework.security.config.Customizer;
+
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -39,36 +42,37 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(2)
     public SecurityFilterChain filterChain(
             HttpSecurity http,
-            ObjectProvider<RateLimitingFilter> rateLimitingFilterProvider
+            ObjectProvider<RateLimitingFilter> rateLimitingFilterProvider,
+            Customizer<HeadersConfigurer<HttpSecurity>> securityHeadersCustomizer
     ) throws Exception {
 
         http
-                // IMPORTANTE: esta cadena solo aplica a la API, no a "any request"
-                .securityMatcher("/api/**")
+                // Aplicar esta cadena a la API
+                .securityMatcher("/v1/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/**")
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(securityHeadersCustomizer)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/api/v1/estaciones/**").permitAll()
-                        .requestMatchers("/api/v1/rutas/**").permitAll()
-                        .requestMatchers("/api/v1/horarios/**").permitAll()
-                        .requestMatchers("/api/v1/vias/**").permitAll()
-                        .requestMatchers("/api/v1/trenes/**").permitAll()
+                        .requestMatchers("/v1/auth/**").permitAll()
+                        .requestMatchers("/v1/estaciones/**").permitAll()
+                        .requestMatchers("/v1/rutas/**").permitAll()
+                        .requestMatchers("/v1/horarios/**").permitAll()
+                        .requestMatchers("/v1/vias/**").permitAll()
+                        .requestMatchers("/v1/trenes/**").permitAll()
 
-                        .requestMatchers("/api/v1/billetes/**").authenticated()
-                        .requestMatchers("/api/v1/pasajeros/**").authenticated()
+                        .requestMatchers("/v1/billetes/**").authenticated()
+                        .requestMatchers("/v1/pasajeros/**").authenticated()
 
-                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/v1/mantenimiento/**").hasAnyRole("ADMIN", "MAINTENANCE")
-                        .requestMatchers("/api/v1/incidentes/**").hasAnyRole("ADMIN", "OPERATOR")
-                        .requestMatchers("/api/v1/señales/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers("/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/v1/mantenimiento/**").hasAnyRole("ADMIN", "MAINTENANCE")
+                        .requestMatchers("/v1/incidentes/**").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers("/v1/señales/**").hasAnyRole("ADMIN", "OPERATOR")
 
-                        .requestMatchers("/api/v1/monitoring/**").hasAnyRole("ADMIN", "OPERATOR", "MONITOR")
-                        .requestMatchers("/api/v1/reports/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/v1/monitoring/**").hasAnyRole("ADMIN", "OPERATOR", "MONITOR")
+                        .requestMatchers("/v1/reports/**").hasAnyRole("ADMIN", "MANAGER")
 
                         .requestMatchers("/actuator/**").hasRole("ADMIN")
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()

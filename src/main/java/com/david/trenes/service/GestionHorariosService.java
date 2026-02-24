@@ -3,6 +3,7 @@ package com.david.trenes.service;
 import com.david.trenes.model.Horario;
 import com.david.trenes.model.Ruta;
 import com.david.trenes.model.Tren;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -109,6 +110,132 @@ public class GestionHorariosService {
             log.info("Horario creado: {} - {} a {}", horario.getCodigoServicio(), horario.getFechaSalida(), horario.getFechaLlegada());
         }
     }
+
+    public Map<String, Object> iniciarServicioPorHorario(String horarioId, Double velocidadCruceroKmh, boolean force) {
+        if (horarioId == null || horarioId.isBlank()) {
+            throw new IllegalArgumentException("horarioId es obligatorio");
+        }
+
+        Horario horario = horarioService.findById(horarioId)
+                .orElseThrow(() -> new RuntimeException("Horario no encontrado con ID: " + horarioId));
+
+        if (horario.getActivo() == null || !horario.getActivo()) {
+            throw new IllegalStateException("El horario no está activo");
+        }
+
+        if (horario.getEstado() != Horario.EstadoHorario.PROGRAMADO && horario.getEstado() != Horario.EstadoHorario.RETRASADO) {
+            throw new IllegalStateException("El horario debe estar PROGRAMADO o RETRASADO para iniciar. Estado actual=" + horario.getEstado());
+        }
+
+        LocalDateTime ahora = LocalDateTime.now();
+
+        // Regla de negocio típica: solo iniciar si estamos dentro de la ventana del servicio (o force=true)
+        boolean dentroVentana = !ahora.isBefore(horario.getFechaSalida()) && ahora.isBefore(horario.getFechaLlegada());
+        if (!force && !dentroVentana) {
+            throw new IllegalStateException("Fuera de ventana: ahora=" + ahora
+                    + ", salida=" + horario.getFechaSalida()
+                    + ", llegada=" + horario.getFechaLlegada()
+                    + ". Usa force=true si quieres arrancarlo igualmente.");
+        }
+
+        Tren tren = trenService.findById(horario.getTrenId())
+                .orElseThrow(() -> new RuntimeException("Tren no encontrado con ID: " + horario.getTrenId()));
+
+        // 1) Actualizar horario
+        horario.setEstado(Horario.EstadoHorario.EN_MARCHA);
+        horario.setFechaActualizacion(ahora);
+        horarioService.save(horario);
+
+        // 2) Sincronizar tren con el horario
+        tren.setEstadoActual(Tren.EstadoTren.EN_MARCHA);
+        tren.setRutaActualId(horario.getRutaId());
+        tren.setEstacionActualId(horario.getEstacionOrigenId());
+
+        // Opcional: si vas a usar estos campos para simulación/telemetría
+        tren.setFechaInicioViaje(ahora);
+        if (velocidadCruceroKmh != null && velocidadCruceroKmh > 0) {
+            if (tren.getVelocidadMaxima() != null) {
+                velocidadCruceroKmh = Math.min(velocidadCruceroKmh, tren.getVelocidadMaxima().doubleValue());
+            }
+            tren.setVelocidadCruceroKmh(velocidadCruceroKmh);
+        }
+
+        tren.setFechaActualizacion(ahora);
+        trenService.save(tren);
+
+        log.warn("INICIO SERVICIO: horario={} -> EN_MARCHA, tren={} -> EN_MARCHA", horario.getCodigoServicio(), tren.getNumeroTren());
+
+        return Map.of(
+                "timestamp", ahora,
+                "horarioId", horario.getId(),
+                "codigoServicio", horario.getCodigoServicio(),
+                "trenId", tren.getId(),
+                "numeroTren", tren.getNumeroTren(),
+                "rutaId", horario.getRutaId(),
+                "estadoHorario", horario.getEstado().name(),
+                "estadoTren", tren.getEstadoActual().name()
+        );
+    }
+
+    public Map<String, Object> obtenerCandidatosInicioHorarios(
+            int minutosAntes,
+            int minutosDespues,
+            int max,
+            boolean incluirRetrasados
+    ) {
+        LocalDateTime ahora = LocalDateTime.now();
+
+        int antes = Math.max(0, minutosAntes);
+        int despues = Math.max(0, minutosDespues);
+        int limite = (max <= 0) ? 50 : Math.min(max, 500);
+
+        LocalDateTime desde = ahora.minusMinutes(antes);
+        LocalDateTime hasta = ahora.plusMinutes(despues);
+
+        // Reutilizamos lo que ya existe en HorarioService/Repository
+        List<Horario> enVentana = horarioService.findByFechaSalidaBetween(desde, hasta);
+
+        List<Map<String, Object>> candidatos = enVentana.stream()
+                .filter(h -> h != null)
+                .filter(h -> h.getActivo() != null && h.getActivo())
+                .filter(h -> h.getTrenId() != null && !h.getTrenId().isBlank())
+                .filter(h -> {
+                    if (h.getEstado() == Horario.EstadoHorario.PROGRAMADO) return true;
+                    return incluirRetrasados && h.getEstado() == Horario.EstadoHorario.RETRASADO;
+                })
+                .sorted(Comparator.comparing(Horario::getFechaSalida))
+                .limit(limite)
+                .map(h -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("horarioId", h.getId());
+                    m.put("codigoServicio", h.getCodigoServicio());
+                    m.put("estado", h.getEstado() != null ? h.getEstado().name() : null);
+                    m.put("activo", h.getActivo());
+                    m.put("trenId", h.getTrenId());
+                    m.put("rutaId", h.getRutaId());
+                    m.put("estacionOrigenId", h.getEstacionOrigenId());
+                    m.put("estacionDestinoId", h.getEstacionDestinoId());
+                    m.put("fechaSalida", h.getFechaSalida());
+                    m.put("fechaLlegada", h.getFechaLlegada());
+                    return m;
+                })
+                .toList();
+
+        return Map.of(
+                "timestamp", ahora,
+                "ventana", Map.of(
+                        "desde", desde,
+                        "hasta", hasta,
+                        "minutosAntes", antes,
+                        "minutosDespues", despues
+                ),
+                "max", limite,
+                "incluyeRetrasados", incluirRetrasados,
+                "totalEnVentana", enVentana.size(),
+                "candidatos", candidatos
+        );
+    }
+
 
     private Tren obtenerTrenRotativo(Tren.TipoTren tipoTren, LocalDateTime salida, LocalDateTime llegada) {
         log.info("Buscando tren rotativo tipo: {} para intervalo: {} -> {}", tipoTren, salida, llegada);
@@ -671,5 +798,261 @@ public class GestionHorariosService {
         resultado.put("paradasEncontradas", paradasHorario);
         
         return resultado;
+    }
+
+    public Map<String, Object> monitorizarEstadoTrenesTiempoReal() {
+        log.info("Iniciando monitorización en tiempo real de todos los trenes");
+
+        Map<String, Object> resultado = new HashMap<>();
+        List<Map<String, Object>> estadosTrenes = new ArrayList<>();
+        LocalDateTime ahora = LocalDateTime.now();
+
+        // Obtener todos los trenes
+        List<Tren> todosTrenes = trenService.findAll();
+
+        int trenesEnMarcha = 0;
+        int trenesDetenidos = 0;
+        int trenesEnMantenimiento = 0;
+        int incidentesDetectados = 0;
+
+        Map<String, Integer> contadorPorEstado = new HashMap<>();
+
+        for (Tren tren : todosTrenes) {
+            Map<String, Object> estadoTren = analizarEstadoTrenActual(tren, ahora);
+            estadosTrenes.add(estadoTren);
+
+            String estado = (String) estadoTren.get("estadoOperativo");
+            if (estado == null) estado = "DESCONOCIDO";
+
+            contadorPorEstado.merge(estado, 1, Integer::sum);
+
+            switch (estado) {
+                case "EN_MARCHA" -> trenesEnMarcha++;
+                case "DETENIDO" -> trenesDetenidos++;
+                case "MANTENIMIENTO" -> trenesEnMantenimiento++;
+                default -> { /* se cuenta en contadorPorEstado */ }
+            }
+
+            if (Boolean.TRUE.equals(estadoTren.get("tieneIncidentes"))) {
+                incidentesDetectados++;
+            }
+        }
+
+        resultado.put("timestamp", ahora);
+        resultado.put("totalTrenes", todosTrenes.size());
+        resultado.put("trenesEnMarcha", trenesEnMarcha);
+        resultado.put("trenesDetenidos", trenesDetenidos);
+        resultado.put("trenesEnMantenimiento", trenesEnMantenimiento);
+        resultado.put("incidentesDetectados", incidentesDetectados);
+        resultado.put("contadorPorEstado", contadorPorEstado);
+        resultado.put("estadosTrenes", estadosTrenes);
+
+        log.info("Monitorización completada: {} trenes totales, {} en marcha, {} incidentes",
+                todosTrenes.size(), trenesEnMarcha, incidentesDetectados);
+
+        return resultado;
+    }
+    
+    private Map<String, Object> analizarEstadoTrenActual(Tren tren, LocalDateTime ahora) {
+        Map<String, Object> estado = new HashMap<>();
+        
+        estado.put("trenId", tren.getId());
+        estado.put("numeroTren", tren.getNumeroTren());
+        estado.put("tipoTren", tren.getTipoTren());
+        estado.put("estadoActual", tren.getEstadoActual());
+        estado.put("capacidadPasajeros", tren.getCapacidadPasajeros());
+        estado.put("ultimaActualizacion", tren.getFechaActualizacion());
+        
+        // Obtener horarios activos del tren
+        List<Horario> horariosActivos = obtenerHorariosActivosPorTren(tren.getId());
+        
+        if (horariosActivos.isEmpty()) {
+            estado.put("estadoOperativo", "SIN_SERVICIO");
+            estado.put("posicionActual", "Depósito/Taller");
+            estado.put("proximoServicio", null);
+            estado.put("tieneIncidentes", false);
+            estado.put("incidentes", new ArrayList<>());
+            return estado;
+        }
+        
+        // Buscar el horario actual o el más próximo
+        Horario horarioActual = encontrarHorarioActual(horariosActivos, ahora);
+        
+        if (horarioActual == null) {
+            // No hay horario en este momento, buscar el próximo
+            horarioActual = encontrarProximoHorario(horariosActivos, ahora);
+            if (horarioActual != null) {
+                estado.put("estadoOperativo", "PREPARANDO_SALIDA");
+                estado.put("posicionActual", "Estación origen: " + horarioActual.getEstacionOrigenId());
+                estado.put("proximoServicio", horarioActual.getCodigoServicio());
+                estado.put("horaSalida", horarioActual.getFechaSalida());
+            } else {
+                estado.put("estadoOperativo", "SERVICIO_COMPLETADO");
+                estado.put("posicionActual", "Depósito");
+                estado.put("proximoServicio", null);
+            }
+        } else {
+            // El tren está en servicio
+            estado.put("estadoOperativo", "EN_MARCHA");
+            estado.put("horarioActual", horarioActual.getCodigoServicio());
+            estado.put("rutaId", horarioActual.getRutaId());
+            estado.put("estacionOrigen", horarioActual.getEstacionOrigenId());
+            estado.put("estacionDestino", horarioActual.getEstacionDestinoId());
+            estado.put("fechaSalida", horarioActual.getFechaSalida());
+            estado.put("fechaLlegada", horarioActual.getFechaLlegada());
+            
+            // Determinar posición actual
+            Map<String, Object> posicion = determinarPosicionActual(horarioActual, ahora);
+            estado.put("posicionActual", posicion.get("descripcion"));
+            estado.put("paradaActual", posicion.get("paradaActual"));
+            estado.put("proximaParada", posicion.get("proximaParada"));
+            estado.put("progresoPorcentaje", posicion.get("progresoPorcentaje"));
+            estado.put("kilometrosRecorridos", posicion.get("kilometrosRecorridos"));
+            estado.put("kilometrosTotales", posicion.get("kilometrosTotales"));
+        }
+        
+        // Analizar incidentes
+        List<Map<String, Object>> incidentes = analizarIncidentesTren(tren, horariosActivos, ahora);
+        estado.put("tieneIncidentes", !incidentes.isEmpty());
+        estado.put("incidentes", incidentes);
+        
+        return estado;
+    }
+    
+    private Horario encontrarHorarioActual(List<Horario> horarios, LocalDateTime ahora) {
+        return horarios.stream()
+            .filter(h -> h.getFechaSalida().isBefore(ahora) && h.getFechaLlegada().isAfter(ahora))
+            .filter(h -> h.getEstado() == Horario.EstadoHorario.EN_MARCHA || 
+                        h.getEstado() == Horario.EstadoHorario.PROGRAMADO ||
+                        h.getEstado() == Horario.EstadoHorario.RETRASADO)
+            .findFirst()
+            .orElse(null);
+    }
+    
+    private Horario encontrarProximoHorario(List<Horario> horarios, LocalDateTime ahora) {
+        return horarios.stream()
+            .filter(h -> h.getFechaSalida().isAfter(ahora))
+            .filter(h -> h.getEstado() == Horario.EstadoHorario.PROGRAMADO ||
+                        h.getEstado() == Horario.EstadoHorario.RETRASADO)
+            .min(Comparator.comparing(Horario::getFechaSalida))
+            .orElse(null);
+    }
+    
+    private Map<String, Object> determinarPosicionActual(Horario horario, LocalDateTime ahora) {
+        Map<String, Object> posicion = new HashMap<>();
+        
+        if (horario.getParadas() == null || horario.getParadas().isEmpty()) {
+            posicion.put("descripcion", "Ruta sin paradas definidas");
+            posicion.put("paradaActual", null);
+            posicion.put("proximaParada", null);
+            posicion.put("progresoPorcentaje", 0.0);
+            posicion.put("kilometrosRecorridos", 0.0);
+            posicion.put("kilometrosTotales", 0.0);
+            return posicion;
+        }
+        
+        // Calcular progreso temporal
+        LocalDateTime salida = horario.getFechaSalida();
+        LocalDateTime llegada = horario.getFechaLlegada();
+        long duracionTotal = java.time.Duration.between(salida, llegada).toMinutes();
+        long tiempoTranscurrido = java.time.Duration.between(salida, ahora).toMinutes();
+        
+        double progresoTemporal = Math.max(0.0, Math.min(100.0, (double) tiempoTranscurrido / duracionTotal * 100));
+        
+        // Encontrar parada actual y próxima
+        Horario.ParadaHorario paradaActual = null;
+        Horario.ParadaHorario proximaParada = null;
+        
+        for (int i = 0; i < horario.getParadas().size(); i++) {
+            Horario.ParadaHorario parada = horario.getParadas().get(i);
+            
+            if (parada.getHoraSalidaProgramada() != null && ahora.isBefore(parada.getHoraSalidaProgramada())) {
+                proximaParada = parada;
+                if (i > 0) {
+                    paradaActual = horario.getParadas().get(i - 1);
+                }
+                break;
+            }
+            
+            if (i == horario.getParadas().size() - 1) {
+                paradaActual = parada;
+                proximaParada = null;
+            }
+        }
+        
+        // Calcular distancia (asumiendo distribución uniforme)
+        double distanciaTotal = 100.0; // km base, se puede ajustar según ruta real
+        double kilometrosRecorridos = distanciaTotal * (progresoTemporal / 100.0);
+        
+        posicion.put("descripcion", paradaActual != null ? 
+            String.format("Entre %s y %s", 
+                paradaActual.getNombreEstacion(), 
+                proximaParada != null ? proximaParada.getNombreEstacion() : "Destino final") :
+            "En ruta hacia próxima parada");
+        posicion.put("paradaActual", paradaActual);
+        posicion.put("proximaParada", proximaParada);
+        posicion.put("progresoPorcentaje", Math.round(progresoTemporal * 100.0) / 100.0);
+        posicion.put("kilometrosRecorridos", Math.round(kilometrosRecorridos * 100.0) / 100.0);
+        posicion.put("kilometrosTotales", distanciaTotal);
+        
+        return posicion;
+    }
+    
+    private List<Map<String, Object>> analizarIncidentesTren(Tren tren, List<Horario> horarios, LocalDateTime ahora) {
+        List<Map<String, Object>> incidentes = new ArrayList<>();
+        
+        // 1. Verificar retrasos
+        for (Horario horario : horarios) {
+            if (horario.getEstado() == Horario.EstadoHorario.RETRASADO) {
+                Map<String, Object> incidente = new HashMap<>();
+                incidente.put("tipo", "RETRASO");
+                incidente.put("descripcion", "El tren presenta retraso en su servicio");
+                incidente.put("horario", horario.getCodigoServicio());
+                incidente.put("severidad", "MEDIA");
+                incidentes.add(incidente);
+            }
+            
+            // 2. Verificar paradas omitidas
+            if (horario.getParadas() != null) {
+                for (Horario.ParadaHorario parada : horario.getParadas()) {
+                    if (parada.getEstado() == Horario.EstadoParada.OMITIDA) {
+                        Map<String, Object> incidente = new HashMap<>();
+                        incidente.put("tipo", "PARADA_OMITIDA");
+                        incidente.put("descripcion", String.format("Parada omitida en %s", parada.getNombreEstacion()));
+                        incidente.put("horario", horario.getCodigoServicio());
+                        incidente.put("estacion", parada.getEstacionId());
+                        incidente.put("severidad", "ALTA");
+                        incidentes.add(incidente);
+                    }
+                }
+            }
+            
+            // 3. Verificar si el tren está demasiado tiempo sin comunicación
+            if (horario.getEstado() == Horario.EstadoHorario.EN_MARCHA) {
+                LocalDateTime ultimaActualizacion = tren.getFechaActualizacion();
+                if (ultimaActualizacion != null) {
+                    long minutosSinActualizacion = java.time.Duration.between(ultimaActualizacion, ahora).toMinutes();
+                    if (minutosSinActualizacion > 30) { // Más de 30 minutos sin actualización
+                        Map<String, Object> incidente = new HashMap<>();
+                        incidente.put("tipo", "SIN_COMUNICACION");
+                        incidente.put("descripcion", String.format("Sin comunicación por %d minutos", minutosSinActualizacion));
+                        incidente.put("horario", horario.getCodigoServicio());
+                        incidente.put("severidad", "ALTA");
+                        incidentes.add(incidente);
+                    }
+                }
+            }
+        }
+        
+        // 4. Verificar estado del tren
+        if (tren.getEstadoActual() == Tren.EstadoTren.MANTENIMIENTO) {
+            Map<String, Object> incidente = new HashMap<>();
+            incidente.put("tipo", "MANTENIMIENTO");
+            incidente.put("descripcion", "Tren actualmente en mantenimiento");
+            incidente.put("severidad", "BAJA");
+            incidentes.add(incidente);
+        }
+        
+        return incidentes;
     }
 }

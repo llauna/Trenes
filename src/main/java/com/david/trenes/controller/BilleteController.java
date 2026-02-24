@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/billetes")
+@RequestMapping("/v1/billetes")
 @RequiredArgsConstructor
 @Slf4j
 @CrossOrigin(origins = {"http://localhost:8082", "http://127.0.0.1:8082"})
@@ -97,6 +97,8 @@ public class BilleteController {
                         .estado(b.getEstado() != null ? b.getEstado().name() : null)
                         .precioTotal(b.getPrecioTotal())
                         .fechaCompra(b.getFechaCompra())
+                        .vagonNumero(b.getVagonNumero())
+                        .asientoNumero(b.getAsientoNumero())
                         .build())
                 .toList();
 
@@ -120,6 +122,8 @@ public class BilleteController {
                         .estado(b.getEstado() != null ? b.getEstado().name() : null)
                         .precioTotal(b.getPrecioTotal())
                         .fechaCompra(b.getFechaCompra())
+                        .vagonNumero(b.getVagonNumero())
+                        .asientoNumero(b.getAsientoNumero())
                         .build())
                 .toList();
 
